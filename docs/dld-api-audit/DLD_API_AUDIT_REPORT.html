@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dubai Land Department API & Data Opportunity Audit</title>
+<style>
+  @page { size: Letter; margin: 0.75in 0.75in 0.72in 0.75in; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #182230; font-size: 10pt; line-height: 1.35; margin: 0; }
+  .cover { page-break-after: always; min-height: 8.7in; padding-top: 0.65in; }
+  .kicker { text-transform: uppercase; letter-spacing: 1.8px; color: #B7791F; font-size: 9pt; font-weight: 700; margin-bottom: 18px; }
+  h1 { color: #0B2545; font-size: 28pt; line-height: 1.08; margin: 0 0 12px 0; }
+  .subtitle { color: #4A5B70; font-size: 14pt; line-height: 1.35; max-width: 6in; }
+  .rule { height: 4px; background: #0B6E75; margin: 28px 0 24px 0; width: 1.2in; }
+  .meta { color: #5B6778; font-size: 10pt; line-height: 1.7; }
+  .lead { margin-top: 62px; padding: 18px 20px; background: #EFF7F7; border-left: 5px solid #0B6E75; font-size: 12pt; color: #173F43; }
+  h2 { color: #0B2545; font-size: 17pt; margin: 22px 0 9px 0; padding-bottom: 5px; border-bottom: 1px solid #D8E1EA; page-break-after: avoid; }
+  h3 { color: #155E75; font-size: 12.5pt; margin: 16px 0 6px 0; page-break-after: avoid; }
+  h4 { color: #334155; font-size: 10.5pt; margin: 12px 0 4px 0; page-break-after: avoid; }
+  p { margin: 0 0 8px 0; }
+  ul, ol { margin: 4px 0 10px 20px; padding: 0; }
+  li { margin: 0 0 4px 0; }
+  .callout { padding: 11px 13px; margin: 10px 0 13px 0; background: #F6F8FB; border-left: 4px solid #2E74B5; }
+  .risk { background: #FFF5F5; border-left-color: #B42318; }
+  .opportunity { background: #F3FAF6; border-left-color: #238636; }
+  .caution { background: #FFFBEB; border-left-color: #B7791F; }
+  .metric-grid { width: 100%; table-layout: fixed; margin: 12px 0 18px 0; border-collapse: collapse; }
+  .metric { width: 25%; background: #0B2545; color: #fff; padding: 12px; vertical-align: top; border: 3px solid #FFFFFF; }
+  .metric b { display: block; font-size: 18pt; color: #73D0CE; margin-bottom: 3px; }
+  .metric span { font-size: 8.5pt; color: #DCE7F2; }
+  table { border-collapse: collapse; width: 100%; table-layout: fixed; margin: 8px 0 14px 0; page-break-inside: auto; }
+  tr { page-break-inside: avoid; }
+  th { background: #E8EEF5; color: #0B2545; text-align: left; font-weight: 700; border: 1px solid #C8D3DF; padding: 6px 7px; vertical-align: middle; }
+  td { border: 1px solid #D7DEE7; padding: 6px 7px; vertical-align: top; overflow-wrap: anywhere; }
+  .small td, .small th { font-size: 8.4pt; padding: 4px 5px; }
+  .tight td, .tight th { font-size: 7.8pt; padding: 3px 4px; }
+  .status-high { color: #9B1C1C; font-weight: 700; }
+  .status-med { color: #8A5A00; font-weight: 700; }
+  .status-good { color: #166534; font-weight: 700; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 8.8pt; background: #F1F5F9; padding: 1px 3px; }
+  .contents-list { columns: 2; column-gap: 0.35in; margin-left: 22px; }
+  .contents-list li { margin-bottom: 4px; break-inside: avoid; }
+  .page-break { page-break-before: always; }
+  .source { font-size: 8.5pt; color: #5B6778; }
+  .footer-note { margin-top: 24px; font-size: 8.5pt; color: #697586; }
+</style>
+</head>
+<body>
+<section class="cover">
+  <div class="kicker">Technical audit & commercial data strategy</div>
+  <h1>Dubai Land Department API & Data Opportunity Audit</h1>
+  <div class="subtitle">HLabs DXB registry mirror, outbound call volume, field coverage, missed data, reliability findings, and a brokerage/proptech product roadmap</div>
+  <div class="rule"></div>
+  <div class="meta">
+    <b>System audited:</b> <code>hlabs-dxb</code><br>
+    <b>Audit date:</b> 28 July 2026<br>
+    <b>Primary external host:</b> <code>gateway.dubailand.gov.ae</code><br>
+    <b>Evidence:</b> source trace, database state, sync history/logs, targeted live HTTP probes, and official DLD open-data/API pages<br>
+    <b>Revision:</b> project open-data integration added and validated on 28 July 2026
+  </div>
+  <div class="lead"><b>Bottom line.</b> The code now uses three DLD endpoint paths. The new projects snapshot is efficient - four POST calls produce a union of 815 unique current-window projects - while an ordinary office/broker registry sync is still hundreds of calls and a deep sync is more than ten thousand. Project data materially expands the product from brokerage prospecting into supply, developer, launch and completion intelligence.</div>
+</section>
+<br clear="all" style="mso-special-character:line-break;page-break-before:always">
+
+<h2>Executive summary</h2>
+<table class="metric-grid"><tr>
+  <td class="metric"><b>3</b><span>unique DLD REST resource paths currently integrated</span></td>
+  <td class="metric"><b>9</b><span>implemented request shapes; 7 are used and 2 point lookups are dormant</span></td>
+  <td class="metric"><b>756</b><span>combined daily logical calls: 752 registry + 4 projects</span></td>
+  <td class="metric"><b>10,248</b><span>combined deep-day logical calls, before retries</span></td>
+</tr></table>
+
+<div class="callout risk"><b>Critical reliability finding.</b> The scheduled run started 28 July 2026 at 03:34:58 UTC, ran for 9,939,228 ms (about 2h45m39s), made 50 HTTP attempts, and failed on DNS resolution. Before failing, it fetched 10,168 unique offices and inserted 25, yet the failed <code>SyncRun</code> row records <code>officesSeen=0</code>. Because office writes are committed before the broker crawl finishes, the database can represent a partial snapshot.</div>
+
+<p>The successful run on 26 July made <b>4,545 actual HTTP attempts</b>. Its configuration reconciled 3,000 offices; the logical minimum was about 3,048 calls (12 office pages + 36 broker pages + 3,000 office-roster lookups). The remaining approximately 1,497 attempts were retries, a roughly 49% overhead. Current code limits regular reconciliation to 1,200, but only 704 offices met the selection rule at audit time, so the present regular-run estimate is 752 logical calls, with a hard ceiling near 1,248 before retries.</p>
+
+<p>The current database contains 10,196 office records, 33,977 broker records and <b>815 project records</b>. The project snapshot completed successfully in 53.7 seconds with exactly four external attempts and no retries. Its four source result sets contained 359 start-date matches, 321 end-date matches, 203 adoption-date matches and 217 completion-date matches (1,100 rows before deduplication).</p>
+
+<h3>Commercial conclusion</h3>
+<p>The combined registry and project data is unusually valuable for B2B prospecting and supply intelligence. The best near-term products are a <b>new-brokerage radar</b>, <b>developer/project launch monitor</b>, <b>completion-risk and handover watchlist</b>, <b>broker-movement/hiring intelligence</b>, <b>licence-expiry workflow</b>, and <b>brokerage campaign planner by area/project</b>. Transactions, rents, units/buildings, developer licensing, valuations, listing validation and rental-index data remain the highest-value joins.</p>
+
+<h2>Contents</h2>
+<ol class="contents-list">
+  <li>Scope, evidence and counting definitions</li>
+  <li>API inventory and runtime flow</li>
+  <li>External call volume</li>
+  <li>Data extracted today</li>
+  <li>Returned data not retained</li>
+  <li>Additional DLD datasets and APIs worth pursuing</li>
+  <li>Brokerage and proptech use cases</li>
+  <li>Technical, data-quality and compliance findings</li>
+  <li>Prioritized roadmap and success measures</li>
+  <li>Conclusions</li>
+  <li>Appendices A-C: field dictionary, Postman guide and sources</li>
+</ol>
+
+<h2 class="page-break">1. Scope, evidence and counting definitions</h2>
+<h3>What was reviewed</h3>
+<ul>
+  <li><code>lib/dld/client.ts</code>: host, authentication parameter, headers, pagination, retries, endpoint wrappers and concurrency.</li>
+  <li><code>lib/dld/projects-client.ts</code> and <code>lib/dld/projects-sync.ts</code>: project POST contract, four-date union, retries, normalization, provenance and sync telemetry.</li>
+  <li><code>lib/dld/sync.ts</code>: full crawl, per-office reconcile selection, write order, tracking and request metrics.</li>
+  <li><code>lib/dld/normalize.ts</code>, <code>lib/dld/derive.ts</code>, and <code>prisma/schema.prisma</code>: raw-to-database mapping, normalization, derived facts and lead scoring.</li>
+  <li>Installed scheduled tasks, the two recorded registry runs, and <code>logs/sync-daily.log</code>.</li>
+  <li>Small read-only live calls to confirm office, broker and project request/response contracts and create saved Postman examples.</li>
+  <li>Official DLD Real Estate Data and API Gateway pages for adjacent data opportunities.</li>
+</ul>
+
+<h3>How “number of API calls” is defined</h3>
+<table>
+  <tr><th style="width:24%">Measure</th><th>Meaning</th><th style="width:22%">Audited answer</th></tr>
+  <tr><td>Unique endpoint paths</td><td>Distinct URL resources on the DLD gateway.</td><td><b>3</b></td></tr>
+  <tr><td>Implemented request shapes</td><td>Different parameter combinations exposed by client helpers.</td><td><b>9</b></td></tr>
+  <tr><td>Runtime-used request shapes</td><td>Three registry shapes plus four required project date-selector shapes.</td><td><b>7</b></td></tr>
+  <tr><td>Logical calls</td><td>One intended page/lookup, excluding retries.</td><td>~756 combined daily; ~10,248 on a deep day</td></tr>
+  <tr><td>Actual HTTP attempts</td><td>Every outbound fetch attempt, including retries. This is what <code>requestCount</code> records.</td><td>4,545 in the only successful recorded run</td></tr>
+</table>
+
+<div class="callout caution"><b>Important limitation.</b> No new full office/broker sync was launched during the audit because it would create thousands of external requests and mutate the registry mirror. The project sync was launched because its complete current-window snapshot is only four calls; it wrote 815 unique records.</div>
+
+<h2>2. API inventory and runtime flow</h2>
+<table class="small">
+  <tr><th style="width:20%">Request</th><th style="width:18%">Path / parameters</th><th style="width:12%">Runtime?</th><th>Purpose and behavior</th></tr>
+  <tr><td>Full office crawl</td><td><code>/offices/</code><br><code>pageSize</code>, <code>pageIndex</code></td><td class="status-good">Used</td><td>Pages the licensed-office directory and deduplicates by <code>RealEstateNumber</code>.</td></tr>
+  <tr><td>Full broker crawl</td><td><code>/brokers/</code><br><code>pageSize</code>, <code>pageIndex</code></td><td class="status-good">Used</td><td>Pages broker cards and deduplicates by <code>CardNumber</code>.</td></tr>
+  <tr><td>Office roster</td><td><code>/brokers/</code><br><code>officeNumber</code>, <code>pageSize=500</code></td><td class="status-good">Used</td><td>Re-pulls one office’s roster because the bulk endpoint is not lossless.</td></tr>
+  <tr><td>Single office</td><td><code>/offices/</code><br><code>officeNumber</code>, <code>pageSize=5</code></td><td class="status-med">Dormant</td><td><code>fetchOffice()</code> exists, but no project code imports it.</td></tr>
+  <tr><td>Single broker</td><td><code>/brokers/</code><br><code>cardNumber</code>, <code>pageSize=5</code></td><td class="status-med">Dormant</td><td><code>fetchBrokerByCard()</code> exists. It verifies the returned card because an unknown number may fall back to an unfiltered list.</td></tr>
+  <tr><td>Projects by date selector (4 variants)</td><td><code>POST /open-data/projects</code><br><code>P_DATE_TYPE=1..4</code>, full-year dates, <code>P_TAKE=-1</code></td><td class="status-good">Used</td><td>Fetches start, end, adoption and completion matches; unions by <code>PROJECT_NUMBER</code> and stores which selectors matched.</td></tr>
+</table>
+
+<h3>Common request contract</h3>
+<ul>
+  <li>Host: <code>https://gateway.dubailand.gov.ae</code>.</li>
+  <li>Credential-like parameter: <code>consumer-id</code>. The current value is embedded in source as a fallback and documented as public.</li>
+  <li>Browser-like <code>User-Agent</code> is required; plain clients can receive HTTP 403.</li>
+  <li>Paging: <code>pageIndex</code> is zero-based. Other common cursor names are silently ignored.</li>
+  <li>Default timeout is 90 seconds; maximum five attempts; linear backoff of 1.5s, 3s, 4.5s and 6s.</li>
+  <li>Roster lookups execute with concurrency 12.</li>
+  <li>Projects use <code>consumer-id</code> as a header and a JSON POST body. Dates must be <code>MM/DD/YYYY</code>; an empty or placeholder body fails.</li>
+  <li>The project export contract accepts <code>P_TAKE=-1</code>, returning the selected date window in one response. The four calls run sequentially to avoid load-related timeouts.</li>
+</ul>
+
+<h3>Runtime sequence</h3>
+<ol>
+  <li>Crawl and immediately upsert all office pages.</li>
+  <li>Crawl and upsert all broker pages; create office stubs for office numbers observed only on broker rows.</li>
+  <li>Select offices for roster reconciliation and call the broker endpoint once per selected office.</li>
+  <li>Deactivate records absent from a successful full snapshot.</li>
+  <li>Recompute rollups, lead scores and daily facts; update broker-card high-water mark.</li>
+  <li>Independently, call the project endpoint four times for the source year, union/deduplicate, hash changes, upsert all 22 DLD business fields plus raw source and write a <code>ProjectSyncRun</code>.</li>
+</ol>
+
+<h2>3. External call volume</h2>
+<h3>Bulk crawl calculation using live totals</h3>
+<table>
+  <tr><th>Stage</th><th>Live reported rows</th><th>Page size</th><th>Data pages</th><th>Terminal/empty page</th><th>Logical calls</th></tr>
+  <tr><td>Offices</td><td>10,178</td><td>1,000</td><td>11 (indexes 0-10)</td><td>1</td><td><b>12</b></td></tr>
+  <tr><td>Brokers</td><td>34,093</td><td>1,000</td><td>35 (indexes 0-34)</td><td>1</td><td><b>36</b></td></tr>
+  <tr><td colspan="5"><b>Bulk crawl total</b></td><td><b>48</b></td></tr>
+</table>
+<p>The extra terminal calls occur because the gateway returns slightly short/repeated pages, so the deduplicated count may never equal <code>TotalRowsCount</code>. The crawler intentionally does not treat a short page as completion.</p>
+
+<h3>Regular run at the audited snapshot</h3>
+<p>The regular selection rule includes active offices licensed within 180 days, offices with zero active brokers, and offices first observed in the current run, capped at 1,200. Existing data produced <b>704 eligible offices</b>. The largest office currently has 468 active brokers, below the roster page size of 500, so each current roster is one logical request.</p>
+<table>
+  <tr><th>Component</th><th style="width:25%">Logical requests</th></tr>
+  <tr><td>Bulk office + broker crawl</td><td>48</td></tr>
+  <tr><td>Per-office roster reconciliation</td><td>704</td></tr>
+  <tr><td><b>Current estimate, before retry overhead</b></td><td><b>752</b></td></tr>
+  <tr><td>Configured ceiling if the 1,200 cap is reached</td><td><b>1,248</b></td></tr>
+</table>
+
+<h3>Project snapshot calculation</h3>
+<table>
+  <tr><th>Date selector</th><th>DLD code</th><th>Rows returned</th><th>Logical calls</th></tr>
+  <tr><td>Start date</td><td>1</td><td>359</td><td>1</td></tr>
+  <tr><td>End date</td><td>2</td><td>321</td><td>1</td></tr>
+  <tr><td>Adoption / registration date</td><td>3</td><td>203</td><td>1</td></tr>
+  <tr><td>Completion date</td><td>4</td><td>217</td><td>1</td></tr>
+  <tr><td><b>Union</b></td><td>-</td><td><b>1,100 returned / 815 unique</b></td><td><b>4</b></td></tr>
+</table>
+<p>The 815-project union contains 560 active, 122 finished, 122 pending and 11 other-status projects across 65 areas and 452 developers. DLD requires a date type and date window, so missing from this union does not mean a historical project ceased to exist; the sync intentionally does not deactivate project rows.</p>
+
+<h3>Deep run and schedule</h3>
+<p>The deep run reconciles every active office. With 10,196 active office rows, its current logical minimum is <b>10,244 requests</b> (48 bulk + 10,196 roster lookups).</p>
+<table>
+  <tr><th>Scheduled workload</th><th>Frequency</th><th>Logical requests before retries</th></tr>
+  <tr><td>Projects open-data sync</td><td>Daily at 07:00</td><td>4</td></tr>
+  <tr><td>Regular registry sync</td><td>Daily at 07:15</td><td>~752 at snapshot; max ~1,248</td></tr>
+  <tr><td>Deep registry sync</td><td>Sunday at 04:30</td><td>~10,244</td></tr>
+  <tr><td><b>Weekly total</b></td><td>7 project + 7 regular + 1 deep</td><td><b>~15,536 current; ~19,008 at regular cap</b></td></tr>
+  <tr><td><b>Average month</b></td><td>365/12 day equivalent</td><td><b>~67,522 current; ~82,622 at regular cap</b></td></tr>
+</table>
+
+<h3>Observed attempts versus logical calls</h3>
+<table>
+  <tr><th>Recorded run</th><th>Status</th><th>Logical baseline</th><th>Actual attempts</th><th>Observation</th></tr>
+  <tr><td>26 Jul 2026 manual</td><td class="status-good">Success</td><td>~3,048 (3,000 roster targets)</td><td><b>4,545</b></td><td>~1,497 extra attempts, approximately 49% overhead.</td></tr>
+  <tr><td>28 Jul 2026 scheduled</td><td class="status-high">Failed</td><td>Did not finish bulk broker crawl</td><td><b>50</b></td><td>DNS <code>ENOTFOUND</code>; long timeout/retry sequence.</td></tr>
+</table>
+<p>A simple scaling of the successful-run ratio would put the present 752-call regular run near 1,120 attempts and the deep run near 15,275 attempts. This is only a sensitivity estimate: retry rates are load- and concurrency-dependent and may worsen on the deep run.</p>
+
+<h2>4. Data extracted today</h2>
+<h3>Project data retained</h3>
+<table class="small">
+  <tr><th style="width:24%">Category</th><th>Fields retained</th><th style="width:23%">Commercial value</th></tr>
+  <tr><td>Identity and sponsor</td><td>Project number; English/Arabic project name; developer number and bilingual name; master project.</td><td>Canonical project/developer CRM, portfolio rollups and matching.</td></tr>
+  <tr><td>Dates</td><td>Start, planned end, adoption/registration, inspection and completion dates.</td><td>Launch calendar, registration cohorts, inspection recency and handover watchlists.</td></tr>
+  <tr><td>Financial and compliance</td><td>Declared project value, escrow account number, project status and project type.</td><td>Developer/project segmentation, escrow visibility and campaign prioritization.</td></tr>
+  <tr><td>Delivery</td><td>Percent completed, bilingual description and recorded completion.</td><td>Progress monitoring, delay/risk hypotheses and buyer communication.</td></tr>
+  <tr><td>Location and supply</td><td>Bilingual area/zone authority; counts of lands, buildings, villas, units and total inventory.</td><td>Area supply pipeline, large-project ranking and brokerage capacity planning.</td></tr>
+  <tr><td>Lineage</td><td>Raw source row, source year, source hash, date-selector matches, first/last seen and sync run telemetry.</td><td>Auditable freshness, change detection and safe interpretation of partial date coverage.</td></tr>
+</table>
+<p><b>Publication terminology:</b> DLD does not return a separate web <code>publishedAt</code> field. The application labels <code>ADOPTION_DATE</code> as “Published / adopted” with an explicit note that it is the project registration/adoption date, not proof of webpage publication time.</p>
+
+<h3>Office/brokerage data retained</h3>
+<table class="small">
+  <tr><th style="width:24%">Category</th><th>Fields retained or derived</th><th style="width:18%">Commercial value</th></tr>
+  <tr><td>Identity</td><td>RERA real-estate number, licence number, English and Arabic names.</td><td>Deduplication, bilingual search and account identity.</td></tr>
+  <tr><td>Licence lifecycle</td><td>Original issue date, expiry date, active/deactivated state, first/last seen.</td><td>New-firm radar, renewal outreach and churn/dissolution monitoring.</td></tr>
+  <tr><td>Contactability</td><td>Office phone/fax, contact person names, contact mobile/email.</td><td>Outbound sequencing and owner/contact routing.</td></tr>
+  <tr><td>Digital presence</td><td>Website, logo, YouTube, Facebook, Instagram, Twitter/X, LinkedIn, WhatsApp.</td><td>Digital maturity and service-gap scoring.</td></tr>
+  <tr><td>Quality/status</td><td>Office rank ID/name, awards count, licensed activities.</td><td>Segmentation, reputation signals and product eligibility.</td></tr>
+  <tr><td>Derived intelligence</td><td>Broker counts, 30/90-day first-card momentum, earliest/latest current card dates, lead score/tier, field-level changes.</td><td>Prioritization, growth signals and CRM automation.</td></tr>
+</table>
+
+<h3>Broker data retained</h3>
+<table class="small">
+  <tr><th style="width:24%">Category</th><th>Fields retained or derived</th><th style="width:18%">Commercial value</th></tr>
+  <tr><td>Identity</td><td>Card number, English/Arabic name, photo.</td><td>Licensed-person identity and CRM verification.</td></tr>
+  <tr><td>Licence lifecycle</td><td>Current card issue/expiry, first/last seen, active/deactivated state, high-water-based <code>isNewCard</code>.</td><td>New-agent prospecting and renewal workflow.</td></tr>
+  <tr><td>Contactability</td><td>Phone, mobile and email.</td><td>Direct broker outreach.</td></tr>
+  <tr><td>Office linkage</td><td>Office RERA/licence number, names, issue/expiry, office rank.</td><td>Roster, firm-size context and broker-movement detection.</td></tr>
+  <tr><td>Broker quality</td><td>Card rank ID/name and awards count.</td><td>Influencer/top-producer segmentation.</td></tr>
+  <tr><td>Derived intelligence</td><td>Lead score/tier and field-change history.</td><td>Prioritized broker queues and movement alerts.</td></tr>
+</table>
+
+<h3>Normalization applied</h3>
+<ul>
+  <li>Naive gateway dates are anchored to UTC to preserve the printed Dubai calendar day in downstream SQL buckets.</li>
+  <li>Placeholder dates outside 1990-2100 become null.</li>
+  <li>Phones are normalized toward <code>+971...</code>; known placeholder numbers are discarded.</li>
+  <li>Email addresses are lowercased and basic-format validated; invalid values become null.</li>
+  <li>URLs without a scheme are promoted to HTTPS when they contain a dot; non-URL values become null.</li>
+  <li>Hyphen/zero/null-like strings are collapsed to null.</li>
+</ul>
+
+<h3>Observed coverage in the current mirror</h3>
+<table class="small">
+  <tr><th>Office field</th><th>Present</th><th>Coverage</th><th>Broker field</th><th>Present</th><th>Coverage</th></tr>
+  <tr><td>Contact email</td><td>10,161 / 10,196</td><td>99.7%</td><td>Email</td><td>33,972 / 33,977</td><td>&gt;99.9%</td></tr>
+  <tr><td>Contact mobile</td><td>2,158 / 10,196</td><td>21.2%</td><td>Mobile</td><td>33,966 / 33,977</td><td>&gt;99.9%</td></tr>
+  <tr><td>Office phone</td><td>2,286 / 10,196</td><td>22.4%</td><td>Phone</td><td>20,788 / 33,977</td><td>61.2%</td></tr>
+  <tr><td>Website</td><td>727 / 10,196</td><td>7.1%</td><td>Photo</td><td>33,977 / 33,977</td><td>100%</td></tr>
+  <tr><td>Instagram</td><td>285 / 10,196</td><td>2.8%</td><td>Card rank</td><td>33,977 / 33,977</td><td>100%</td></tr>
+  <tr><td>WhatsApp</td><td>628 / 10,196</td><td>6.2%</td><td>Office linkage</td><td>33,977 / 33,977</td><td>100%</td></tr>
+  <tr><td>Logo</td><td>10,185 / 10,196</td><td>99.9%</td><td>Issue date</td><td>33,975 / 33,977</td><td>99.99%</td></tr>
+  <tr><td>Activities</td><td>10,185 / 10,196</td><td>99.9%</td><td>Expiry date</td><td>33,977 / 33,977</td><td>100%</td></tr>
+</table>
+<div class="callout opportunity"><b>Interpretation.</b> The low office website/social/WhatsApp coverage creates a high-value sales signal, but it must first be separated into “DLD has no value” versus “the business truly has no presence.” Enrichment and validation are required before pitching a digital gap as fact.</div>
+
+<h2>5. Returned data not retained</h2>
+<h3>Fields visible in the same live responses</h3>
+<table class="small">
+  <tr><th style="width:24%">Field</th><th style="width:17%">Where</th><th style="width:18%">Current handling</th><th>Recommendation</th></tr>
+  <tr><td><code>OfficeLogo</code></td><td>Broker row</td><td>Declared in TypeScript but discarded by broker normalization.</td><td>Retain only if broker-level exports need the office brand without joining to <code>Office</code>; otherwise document intentional de-duplication.</td></tr>
+  <tr><td><code>SearchMatchTypeNameAr/En</code></td><td>Broker row</td><td>Not declared in interface and discarded.</td><td>Add to raw schema-drift tests; store only if a supported search mode makes it non-null and commercially meaningful.</td></tr>
+  <tr><td><code>RowIndex</code></td><td>Office and broker rows</td><td>Not stored.</td><td>Normally safe to omit; capture in raw landing logs when diagnosing missing/duplicate pages.</td></tr>
+  <tr><td>Row-level <code>TotalRowsCount</code></td><td>Office and broker rows</td><td>Not stored.</td><td>Use for consistency checks against the envelope; no need in the core entity table.</td></tr>
+  <tr><td><code>TimeStamp</code></td><td>Envelope</td><td>Parsed by TypeScript type but not persisted.</td><td>Persist as <code>sourceTimestamp</code> per request/run for freshness and lineage.</td></tr>
+  <tr><td><code>Errors</code></td><td>Envelope</td><td>Declared but never validated.</td><td>Fail or quarantine a page when non-empty even if HTTP status is 200.</td></tr>
+  <tr><td><code>ExceptionId</code></td><td>Envelope</td><td>Ignored.</td><td>Persist in request diagnostics and alerts.</td></tr>
+  <tr><td><code>ActionUserId</code></td><td>Live envelope</td><td>Not declared.</td><td>Add to tolerant raw schema monitoring; likely operational metadata, not an entity field.</td></tr>
+  <tr><td><code>Token</code></td><td>Envelope</td><td>Ignored.</td><td>Continue not storing unless DLD formally documents it; never log if it becomes sensitive.</td></tr>
+  <tr><td>Envelope <code>TotalRowsCount</code></td><td>Envelope</td><td>Used for crawl control/logging, not persisted structurally.</td><td>Store per-run reported totals and unique counts to quantify coverage drift.</td></tr>
+  <tr><td><code>timeStamp</code>, <code>responseCode</code>, <code>validationErrorsList</code></td><td>Project envelope</td><td>Validated in memory but not retained per request.</td><td>Persist per-request manifests if contractual lineage or forensic replay is required.</td></tr>
+  <tr><td><code>additionalData</code></td><td>Project envelope</td><td>Currently null and not retained.</td><td>Schema-monitor it; store only if DLD begins returning meaningful content.</td></tr>
+</table>
+
+<h3>Data lost through cleaning</h3>
+<p>The normalized database intentionally loses raw formatting and invalid/placeholder values. That is appropriate for operations, but it makes later data-quality analysis harder. A compact raw landing layer (JSON payload, request URL without secrets, source timestamp, page index, response checksum and schema version) would preserve evidence while the normalized tables remain clean.</p>
+
+<h2>6. Additional DLD datasets and APIs worth pursuing</h2>
+<h3>Official public open-data families</h3>
+<p>DLD’s Real Estate Data page publishes views for transactions, rents, projects, valuations, land, buildings, units, brokers and developers. <code>hlabs-dxb</code> now ingests the project family through the same JSON endpoint used by the official frontend, in addition to the broker/office directory. The other families remain dataset opportunities and need their own contract, rate and compliance review.</p>
+<table class="small">
+  <tr><th style="width:16%">Dataset</th><th>Available fields highlighted by DLD</th><th style="width:31%">High-value product outcome</th></tr>
+  <tr><td>Transactions</td><td>Transaction number/date/type/subtype, ready/off-plan, freehold, usage, area, property type/subtype, amount, transaction/property size, rooms, parking, nearby landmarks, buyer/seller counts, master project/project.</td><td>Comparable-sales engine, price/sq.m., liquidity/velocity, off-plan vs secondary demand, area/project momentum, valuation support.</td></tr>
+  <tr><td>Rents</td><td>Registration/start/end dates, new/renew version, area, contract/annual amount, freehold, size/type/subtype, rooms, usage, landmarks, parking, units, project.</td><td>Rent comps, gross-yield models, renewal behavior, tenant-demand heatmaps and landlord/broker rent guidance.</td></tr>
+  <tr><td>Projects</td><td>Project/developer IDs and names, dates, project type/value, escrow account, status, completion %, inspection/completion dates, description, area, authority, land/building/villa/unit totals, master project.</td><td><b>Integrated now:</b> supply pipeline, launch calendar, completion risk, developer intelligence and broker campaign planning.</td></tr>
+  <tr><td>Valuations</td><td>Total property value, area/size, procedure year/number, date, amount, transaction size, type/subtype.</td><td>Valuation-to-sale spread, model calibration and lender/investor analytics.</td></tr>
+  <tr><td>Land</td><td>Land type/subtype/size, ready/off-plan, pre-registration number, freehold, zip, master project, project number/name, area, zone.</td><td>Development-site intelligence, zoning/product segmentation and land comp analytics.</td></tr>
+  <tr><td>Buildings</td><td>Size/common/built-up area, levels, shops/flats/offices, pools/elevators, creation date, registration/freehold/leasehold, floors/rooms/parking, land/project/area/zone.</td><td>Building inventory graph, amenity scoring, brokerage specialization and property-management targeting.</td></tr>
+  <tr><td>Units</td><td>Unit/building/land/project IDs, subtype/size/balcony/common area, floor/room/parking, creation date, registration/freehold/leasehold, municipality, area/zone.</td><td>Canonical unit catalog, deduplication, listing QA, inventory search and pricing features.</td></tr>
+  <tr><td>Broker open data</td><td>Broker number/name, gender, licence start/end, website, phone/fax, office number/name.</td><td>Gender and historical licence fields not in the current gateway model; useful for completeness cross-checks.</td></tr>
+  <tr><td>Developer</td><td>Developer number/name, registration date, licence source/type/number/dates, website/phone/fax, chamber number.</td><td>Developer CRM, compliance/renewal alerts and project sponsor due diligence.</td></tr>
+</table>
+
+<h3>Official subscription API opportunities</h3>
+<table class="small">
+  <tr><th style="width:18%">API family</th><th>DLD-described capability</th><th style="width:28%">Recommended use</th><th style="width:15%">Access note</th></tr>
+  <tr><td>Dubai Brokers</td><td>Two endpoints for real-time broker-card and office enquiry/validation.</td><td>Replace reliance on an undocumented public gateway with a supported contract and SLA.</td><td>Active DLD business account; AED 30,000 + VAT/year shown.</td></tr>
+  <tr><td>Rental Index</td><td>Current/historical rental prices and market indicators across property types/regions.</td><td>Rent calculator, landlord renewal advice, broker pricing tools and yield models.</td><td>Subscription/pre-requisites apply.</td></tr>
+  <tr><td>Trakheesi</td><td>Listing Validation API and delisted-property records by timeframe.</td><td>Permit validation, compliant publishing, stale/fake listing detection and delisting alerts.</td><td>Trade-licence requirements; AED 30,000 + VAT/year shown.</td></tr>
+  <tr><td>Ejari</td><td>Issue, renew and terminate tenancy contracts plus print/cancel/lookups.</td><td>Brokerage/property-management transaction workflow, not merely analytics.</td><td>Requires eligible activities, local office and PMC/landlord association.</td></tr>
+  <tr><td>Mollak/Oqood</td><td>Service-charge, receipts/invoices/community/owner sync; developer/bank workflows.</td><td>Property-management, community-finance and developer products.</td><td>Restricted to eligible entities; not a general lead-data source.</td></tr>
+</table>
+
+<div class="callout caution"><b>Do not mix access classes.</b> Public downloadable data, the currently used public gateway, and paid DLD subscription APIs have different terms, prerequisites and reliability expectations. Each new source needs its own licence/terms review, rate plan, data-retention policy and customer-facing attribution.</div>
+
+<h2>7. Brokerage and proptech use cases</h2>
+<h3>Prioritized products from data already collected</h3>
+<table class="small">
+  <tr><th style="width:6%">Rank</th><th style="width:22%">Product / insight</th><th>How it is derived</th><th style="width:26%">Who benefits / monetization</th></tr>
+  <tr><td>1</td><td><b>New Brokerage Radar</b></td><td>Original office issue date + first seen + contactability + activities + digital gaps.</td><td>Internal sales, vendors and new firms; subscription feed or qualified-lead product.</td></tr>
+  <tr><td>2</td><td><b>Roster & Broker Movement Intelligence</b></td><td>Daily roster snapshots and changes in <code>RealEstateNumber</code>, with first/last seen.</td><td>Brokerages recruiting agents, CRMs and competitor-intelligence teams.</td></tr>
+  <tr><td>3</td><td><b>Licence Expiry Workbench</b></td><td>Office/card expiry windows, active state, contact channels and change history.</td><td>Brokerage compliance teams and brokers; workflow/SaaS seats.</td></tr>
+  <tr><td>4</td><td><b>Digital Readiness Score</b></td><td>Website/social/WhatsApp availability, contactability, office size and age.</td><td>Web/CRM/marketing service sales and brokerage self-assessment.</td></tr>
+  <tr><td>5</td><td><b>Brokerage Growth & Hiring Signal</b></td><td>Exact-from-observation new cards, roster deltas and office-size bands.</td><td>Proptech vendors, recruiters and competitor strategy teams.</td></tr>
+  <tr><td>6</td><td><b>Verified Broker Directory / API</b></td><td>Card, photo, rank, office association and freshness checks.</td><td>Consumers, portals and compliance teams; API usage pricing.</td></tr>
+  <tr><td>7</td><td><b>White-space Territory Planner</b></td><td>Activities, rank, firm size, licence age and digital gaps; add area data later.</td><td>Brokerage expansion and partner/channel teams.</td></tr>
+  <tr><td>8</td><td><b>Account Change Alerts</b></td><td>Contact, rank, website, WhatsApp, expiry and office-move diffs.</td><td>CRM users; premium alerting/automation tier.</td></tr>
+</table>
+
+<h3>Products unlocked by additional data</h3>
+<ul>
+  <li><b>Area/project market cockpit:</b> price/sq.m., rent/sq.m., sales volume, transaction velocity, off-plan share, yields and project completion risk.</li>
+  <li><b>Broker performance context:</b> rank brokers and offices against the markets/projects they specialize in, using permitted non-personal aggregations.</li>
+  <li><b>Compliant listing operations:</b> permit validation, listing-to-unit matching, delisting/staleness alerts and duplicate/fraud detection.</li>
+  <li><b>Developer and launch intelligence:</b> project pipeline, completion %, inspection dates and developer licence/portfolio monitoring.</li>
+  <li><b>Investor analytics:</b> comparable transactions, rent yield, price/rent indexes, liquidity and pipeline supply.</li>
+  <li><b>Property-management stack:</b> Ejari lifecycle, Mollak service-charge workflows and owner/community operations for eligible customers.</li>
+</ul>
+
+<h3>Immediate products from the new project data</h3>
+<ul>
+  <li><b>Developer launch radar:</b> group newly adopted projects by developer, area, project type, value and unit count; route relevant launches to brokerage clients.</li>
+  <li><b>Completion and handover watchlist:</b> compare planned end, recorded completion and percent completed to flag likely handover windows or schedule slippage for due diligence.</li>
+  <li><b>Brokerage campaign planner:</b> identify areas with concentrated upcoming unit supply and help brokerages allocate agents, content and lead-generation budgets.</li>
+  <li><b>Developer portfolio scorecards:</b> portfolio size, declared value, status mix, completion distribution, inspection recency and escrow coverage.</li>
+  <li><b>Inventory opportunity ranking:</b> prioritize high-unit projects, villa-heavy schemes, active low-completion projects or projects approaching completion.</li>
+  <li><b>Source-grounded project pages/API:</b> searchable detail, bilingual descriptions, schedule, progress, area/authority, inventory and downloadable CSV for brokerage analysts.</li>
+</ul>
+
+<h3>Conclusions the present data can support</h3>
+<ul>
+  <li><b>Who is newly licensed?</b> Strong for offices across historical issue dates; strong for newly observed broker cards only after the high-water baseline began.</li>
+  <li><b>Who is reachable?</b> Strong for broker email/mobile and office email; weaker for office mobile/phone.</li>
+  <li><b>Who appears digitally underserved?</b> Useful lead hypothesis, not proof, until external web/social enrichment validates absence.</li>
+  <li><b>Which firms are hiring or losing brokers?</b> Strong after repeated complete roster observations; weak if a run is partial or reconciliation skips an office.</li>
+  <li><b>Who may need renewal/compliance help?</b> Strong from current expiry dates, subject to freshness.</li>
+  <li><b>Which brokerages are highest-value prospects?</b> Reasonable heuristic from age, size, reachability, digital gap and momentum; it needs outcome feedback to become predictive.</li>
+  <li><b>Which current-window projects create supply and campaign opportunities?</b> Strong within the explicit four-selector source-year coverage, with project/developer, schedule, progress, area, value and inventory available.</li>
+</ul>
+
+<h3>Conclusions the present data cannot support responsibly</h3>
+<ul>
+  <li>True historical first-licence date for brokers whose cards renewed before monitoring began.</li>
+  <li>Broker/office sales performance, transaction volume, commission, inventory or area specialization.</li>
+  <li>Transaction-derived property values, achieved sales velocity, rent yields, brokerage market share or buyer demand. Declared project value and construction progress are available, but they are not sales performance.</li>
+  <li>A complete historical universe of every Dubai project. The endpoint requires a date selector and source-year window; the union is current-window coverage.</li>
+  <li>Proof that a missing DLD website/social field means the business has no such presence.</li>
+  <li>A fully consistent “as of now” registry count while partial failed runs can commit data.</li>
+</ul>
+
+<h2>8. Technical, data-quality and compliance findings</h2>
+<table class="small">
+  <tr><th style="width:9%">Priority</th><th style="width:25%">Finding</th><th>Impact</th><th style="width:28%">Recommended control</th></tr>
+  <tr><td class="status-high">P0</td><td>Run is not snapshot-atomic.</td><td>Office data can be refreshed while broker data remains stale; customer claims and derived signals can be inconsistent.</td><td>Land raw pages into run-scoped staging tables; validate completeness; atomically promote a successful snapshot.</td></tr>
+  <tr><td class="status-high">P0</td><td>Latest scheduled run failed after 2h45m.</td><td>Freshness breach and long resource occupancy; daily task returned a non-zero result.</td><td>DNS/network preflight, circuit breaker, shorter bounded timeout for DNS failures, alerting, and resume-from-page checkpoints.</td></tr>
+  <tr><td class="status-high">P0</td><td>Failed-run metrics discard partial progress.</td><td><code>officesSeen=0</code> conflicts with log evidence of 10,168 fetched and 25 inserted.</td><td>Persist stage counters incrementally or write partial result counters in the catch path.</td></tr>
+  <tr><td class="status-high">P1</td><td>Envelope logical errors are ignored.</td><td>HTTP 200 can be accepted even if <code>Errors</code>/<code>ExceptionId</code> signals an application failure.</td><td>Validate envelope before using <code>Response</code>; quarantine and alert on logical errors.</td></tr>
+  <tr><td class="status-high">P1</td><td>Retry metrics are not persisted.</td><td>Cannot distinguish baseline demand from network/rate-limit overhead.</td><td>Persist logical requests, attempts, retries, 4xx/5xx, timeouts, DNS failures and per-endpoint latency.</td></tr>
+  <tr><td class="status-med">P1</td><td>Error count semantics are inconsistent.</td><td>A roster request can increment <code>errors</code> inside <code>request()</code> and again in the reconcile catch.</td><td>Count one terminal error per logical call; track run failure separately.</td></tr>
+  <tr><td class="status-med">P1</td><td>Public fallback consumer ID is embedded in code.</td><td>Easy setup but no central rotation/usage control if DLD changes access terms.</td><td>Require the environment variable in production; keep only an explicit local-development path.</td></tr>
+  <tr><td class="status-med">P1</td><td>No raw schema/lineage layer.</td><td>New fields such as <code>ActionUserId</code> and search-match fields can appear unnoticed; cleaned values cannot be reprocessed.</td><td>Store request manifest + checksums + sampled/raw payloads with retention and access controls.</td></tr>
+  <tr><td class="status-med">P2</td><td>Fixed concurrency and broad retry policy.</td><td>429s, 403s, DNS and 5xx are retried identically; deep runs may amplify load.</td><td>Endpoint-aware backoff with jitter, <code>Retry-After</code>, adaptive concurrency and a request budget.</td></tr>
+  <tr><td class="status-med">P2</td><td>Project source is date-window constrained.</td><td>Absence from the current union cannot be interpreted as delisting, and the official page points prior-year users to Dubai Pulse.</td><td>Keep source year/date matches visible, never deactivate on absence, and add licensed historical backfill if complete history is required.</td></tr>
+  <tr><td class="status-med">P2</td><td>Contact data is personal data.</td><td>Saved samples, CRM exports and client products can create privacy/marketing-law exposure.</td><td>Purpose limitation, role-based access, audit logging, retention/deletion policy, suppression lists and UAE legal review before outreach/resale.</td></tr>
+</table>
+
+<h3>Specific data-quality observations</h3>
+<ul>
+  <li>The bulk gateway reported more rows than the crawler could deduplicate: the successful run captured 10,132 of 10,163 reported offices and 33,977 of 34,022 reported brokers before roster reconciliation.</li>
+  <li>The current mirror shows 38 zero-broker offices, 9,121 offices with 1-5 active brokers, 835 with 6-20, 175 with 21-100, and 27 above 100; the maximum is 468.</li>
+  <li>Broker card issue date is the current term and moves on renewal. Historical “new broker” analysis before the observation baseline is not recoverable from this source alone.</li>
+  <li>Office issue date is treated as the original licence date and is the stronger historical lead signal.</li>
+  <li>Live response schema includes fields absent from the static interface, demonstrating the need for schema-drift monitoring.</li>
+  <li>The project sync stored all 815 unique rows with source hashes and raw JSON; a second identical run should report zero changes, providing a clean idempotency check.</li>
+</ul>
+
+<h2>9. Prioritized roadmap and success measures</h2>
+<h3>0-30 days: make the mirror trustworthy</h3>
+<ol>
+  <li>Introduce run-scoped raw/staging storage and atomic promotion; prevent partial office/broker snapshots.</li>
+  <li>Record source timestamp, reported total, unique total, logical requests, attempts, retries, status class, latency and failure category per endpoint/stage.</li>
+  <li>Validate <code>Errors</code> and <code>ExceptionId</code>; add schema-contract tests that tolerate additive fields but alert on removals/type changes.</li>
+  <li>Add scheduler alerts for failure, age-of-last-success and unexpected request growth.</li>
+  <li>Use the supplied Postman collection as the smoke-test baseline. Keep project diagnostics at <code>P_TAKE=1</code>; reserve <code>P_TAKE=-1</code> for the scheduled four-call snapshot.</li>
+</ol>
+
+<h3>30-90 days: productize existing registry intelligence</h3>
+<ol>
+  <li>Launch new-brokerage, expiry and roster-change alerts with explicit freshness labels.</li>
+  <li>Validate websites/socials with compliant enrichment and distinguish “missing at DLD” from “not found after validation.”</li>
+  <li>Feed CRM outcomes back into scoring: contact rate, reply, meeting, win, deal value and false-positive reason.</li>
+  <li>Publish account-level timelines: licence, contact/rank/digital changes, broker joins/leaves and outreach history.</li>
+  <li>Add customer-facing data provenance and confidence badges.</li>
+</ol>
+
+<h3>90-180 days: expand the data moat</h3>
+<ol>
+  <li>Ingest DLD public transaction, rent and developer datasets under confirmed terms; join them to the now-live project dimension.</li>
+  <li>Evaluate the supported Dubai Brokers API against the public gateway on SLA, completeness, terms and total cost.</li>
+  <li>For brokerage software customers, evaluate Rental Index and Trakheesi listing validation/delisting subscriptions.</li>
+  <li>Create market benchmarks: sales/rent price per sq.m., transaction velocity, yields, off-plan share, project pipeline and brokerage growth.</li>
+</ol>
+
+<h3>Recommended KPIs</h3>
+<table class="small">
+  <tr><th>Reliability</th><th>Data quality</th><th>Commercial</th></tr>
+  <tr><td>Last successful snapshot age; success rate; p95 stage latency; actual attempts/logical call; DNS/timeout/429 rate.</td><td>Unique/reported coverage; duplicate rate; schema-drift events; contact validation rate; stale-record rate; roster completeness.</td><td>Lead-to-contact, reply, meeting and win rates by signal; cost per qualified lead; alert engagement; client retention; revenue per data product.</td></tr>
+</table>
+
+<h2>10. Conclusions</h2>
+<ol>
+  <li><b>The integration now has two very different cost profiles.</b> Projects are a predictable four-call snapshot; office/broker roster reconciliation remains hundreds of daily calls and more than ten thousand on a deep run.</li>
+  <li><b>The registry is commercially useful now.</b> It can power timely B2B prospecting, compliance, roster intelligence and digital-readiness products without waiting for transaction data.</li>
+  <li><b>Freshness and consistency are the immediate constraint.</b> The most recent scheduled failure produced a partial mirror and misleading run counters. Fix the ingestion contract before selling “real-time” intelligence.</li>
+  <li><b>Project intelligence is now a working product surface.</b> The 815-row current-window union supports developer, launch, supply, progress, area and campaign analysis with explicit source coverage.</li>
+  <li><b>The largest next opportunity is joining entities and projects to market outcomes.</b> Transactions, rents, units/buildings and developer licensing would explain not only who operates and what is being built, but where demand and realized pricing justify action.</li>
+  <li><b>Supported DLD APIs matter for production.</b> The current gateway is effective but behaves like an undocumented public feed. A supported Dubai Brokers subscription should be evaluated for contractual access, stability and SLA.</li>
+  <li><b>Personal-data governance must be designed into the product.</b> Direct broker/contact data can create value, but outreach, resale, retention and saved examples require purpose limitation and legal review.</li>
+</ol>
+
+<h2 class="page-break">Appendix A. Field-level extraction dictionary</h2>
+<h3>Office response mapping</h3>
+<table class="tight">
+  <tr><th>Gateway field</th><th>Database field / handling</th><th>Extracted?</th></tr>
+  <tr><td>RealEstateNumber</td><td><code>Office.realEstateNumber</code> (primary key)</td><td>Yes</td></tr>
+  <tr><td>LicenseNumber</td><td><code>licenseNumber</code>, cleaned</td><td>Yes</td></tr>
+  <tr><td>OfficeNameEn / OfficeNameAr</td><td><code>nameEn / nameAr</code></td><td>Yes</td></tr>
+  <tr><td>OfficeIssueDate / OfficeExpiryDate</td><td><code>issueDate / expiryDate</code>, parsed</td><td>Yes</td></tr>
+  <tr><td>OfficePhone / OfficeFax</td><td><code>phone</code> normalized; <code>fax</code> cleaned</td><td>Yes</td></tr>
+  <tr><td>OfficeWebSite</td><td><code>website</code>, URL normalized</td><td>Yes</td></tr>
+  <tr><td>ContactPersonNameEn / Ar</td><td><code>contactNameEn / Ar</code></td><td>Yes</td></tr>
+  <tr><td>ContactPersonMobile / Email</td><td><code>contactMobile / contactEmail</code>, normalized/validated</td><td>Yes</td></tr>
+  <tr><td>OfficeLogo</td><td><code>logo</code></td><td>Yes</td></tr>
+  <tr><td>OfficeRankId / OfficeRank</td><td><code>rankId / rank</code></td><td>Yes</td></tr>
+  <tr><td>AwardsCount</td><td><code>awardsCount</code>, null becomes 0</td><td>Yes</td></tr>
+  <tr><td>YouTubeUrl / FaceBookUrl / InstagramUrl / TwitterUrl / LinkedInUrl</td><td>Corresponding URL columns, normalized</td><td>Yes</td></tr>
+  <tr><td>WhatsAppBusinessNumber</td><td><code>whatsapp</code>, phone normalized</td><td>Yes</td></tr>
+  <tr><td>Activities[]</td><td>JSON <code>{id,nameEn,nameAr}</code></td><td>Yes</td></tr>
+  <tr><td>RowIndex / row TotalRowsCount</td><td>Discarded</td><td>No</td></tr>
+</table>
+
+<h3>Broker response mapping</h3>
+<table class="tight">
+  <tr><th>Gateway field</th><th>Database field / handling</th><th>Extracted?</th></tr>
+  <tr><td>CardNumber</td><td><code>Broker.cardNumber</code> (primary key)</td><td>Yes</td></tr>
+  <tr><td>CardHolderNameEn / Ar</td><td><code>nameEn / nameAr</code></td><td>Yes</td></tr>
+  <tr><td>CardIssueDate / CardExpiryDate</td><td><code>cardIssueDate / cardExpiryDate</code>, parsed</td><td>Yes</td></tr>
+  <tr><td>CardHolderPhone / Mobile / Email</td><td><code>phone / mobile / email</code>, normalized/validated</td><td>Yes</td></tr>
+  <tr><td>RealEstateNumber / LicenseNumber</td><td><code>realEstateNumber / licenseNumber</code></td><td>Yes</td></tr>
+  <tr><td>OfficeNameEn / Ar</td><td><code>officeNameEn / officeNameAr</code></td><td>Yes</td></tr>
+  <tr><td>OfficeIssueDate / ExpiryDate</td><td><code>officeIssueDate / officeExpiryDate</code></td><td>Yes</td></tr>
+  <tr><td>CardHolderPhoto</td><td><code>photo</code></td><td>Yes</td></tr>
+  <tr><td>OfficeRankId / OfficeRank</td><td><code>officeRankId / officeRank</code></td><td>Yes</td></tr>
+  <tr><td>CardRankId / CardRank</td><td><code>cardRankId / cardRank</code></td><td>Yes</td></tr>
+  <tr><td>AwardsCount</td><td><code>awardsCount</code>, null becomes 0</td><td>Yes</td></tr>
+  <tr><td>OfficeLogo</td><td>Discarded by broker normalizer</td><td>No</td></tr>
+  <tr><td>SearchMatchTypeNameAr / En</td><td>Undeclared/discarded</td><td>No</td></tr>
+  <tr><td>RowIndex / row TotalRowsCount</td><td>Discarded</td><td>No</td></tr>
+</table>
+
+<h3>Project response mapping</h3>
+<table class="tight">
+  <tr><th>Gateway field(s)</th><th>Database field / handling</th><th>Extracted?</th></tr>
+  <tr><td><code>PROJECT_NUMBER</code></td><td><code>Project.projectNumber</code> primary key</td><td>Yes</td></tr>
+  <tr><td><code>PROJECT_EN / PROJECT_AR</code></td><td><code>nameEn / nameAr</code></td><td>Yes</td></tr>
+  <tr><td><code>DEVELOPER_NUMBER / DEVELOPER_EN / DEVELOPER_AR</code></td><td>Developer ID and bilingual names</td><td>Yes</td></tr>
+  <tr><td><code>START_DATE / END_DATE / ADOPTION_DATE / INSPECTION_DATE / COMPLETION_DATE</code></td><td>Five UTC-anchored timestamp columns</td><td>Yes</td></tr>
+  <tr><td><code>PRJ_TYPE_EN / PRJ_TYPE_AR</code></td><td>Bilingual project type</td><td>Yes</td></tr>
+  <tr><td><code>PROJECT_VALUE / ESCROW_ACCOUNT_NUMBER</code></td><td>Decimal AED value and string escrow account</td><td>Yes</td></tr>
+  <tr><td><code>PROJECT_STATUS / PERCENT_COMPLETED</code></td><td>Status and decimal completion percentage</td><td>Yes</td></tr>
+  <tr><td><code>DESCRIPTION_EN / DESCRIPTION_AR</code></td><td>Bilingual long description</td><td>Yes</td></tr>
+  <tr><td><code>AREA_EN / AREA_AR / ZONE_EN / ZONE_AR</code></td><td>Bilingual area and authority</td><td>Yes</td></tr>
+  <tr><td><code>CNT_LAND / CNT_BUILDING / CNT_VILLA / CNT_UNIT / CNT_TOTAL</code></td><td>Five integer inventory counters</td><td>Yes</td></tr>
+  <tr><td><code>MASTER_PROJECT_EN / MASTER_PROJECT_AR</code></td><td>Bilingual master project</td><td>Yes</td></tr>
+  <tr><td><code>RN / TOTAL / DEFAULT_SORT</code></td><td>Preserved in <code>rawSource</code>, not duplicated as core columns</td><td>Raw only</td></tr>
+</table>
+
+<h2>Appendix B. Postman collection usage</h2>
+<ol>
+  <li>Import <code>HLabs_DXB_DLD_API.postman_collection.json</code> into Postman.</li>
+  <li>Review collection variables: <code>baseUrl</code>, <code>consumerId</code>, <code>pageSize</code>, <code>pageIndex</code>, <code>officeNumber</code>, <code>cardNumber</code>, <code>projectFromDate</code>, <code>projectToDate</code> and <code>projectTake</code>.</li>
+  <li>Start with page sizes of 2-5 for diagnostics. Do not run full collection iterations with <code>pageSize=1000</code> across hundreds of indexes.</li>
+  <li>The project folder parameterizes all four runtime POST variants through <code>projectDateType</code>. Use <code>projectTake=1</code> for inspection; set it to <code>-1</code> only when intentionally retrieving a whole selector window.</li>
+  <li>Each request includes basic envelope and logical-error tests.</li>
+  <li>Each registry request includes a sanitized live-derived response; each project variant includes a public project-data saved 200 response so every returned field and data type can be inspected without rerunning the API.</li>
+  <li>The “point lookup” folder is labelled dormant because those helpers are implemented but unused by the application today.</li>
+</ol>
+
+<h2>Appendix C. Sources and evidence</h2>
+<ul class="source">
+  <li>Repository source: <code>lib/dld/client.ts</code>, <code>lib/dld/sync.ts</code>, <code>lib/dld/projects-client.ts</code>, <code>lib/dld/projects-sync.ts</code>, <code>lib/dld/normalize.ts</code>, <code>lib/dld/derive.ts</code>, <code>prisma/schema.prisma</code>, <code>scripts/install-schedule.ps1</code>, and <code>README.md</code>.</li>
+  <li>Database: <code>SyncRun</code>, <code>ProjectSyncRun</code>, <code>Office</code>, <code>Broker</code> and <code>Project</code> counts/coverage on 28 July 2026.</li>
+  <li>Live gateway probes: <code>/offices/</code>, <code>/brokers/</code> and <code>POST /open-data/projects</code>, including four full-year date-selector calls.</li>
+  <li>DLD Real Estate Data: <a href="https://dubailand.gov.ae/en/open-data/real-estate-data/">https://dubailand.gov.ae/en/open-data/real-estate-data/</a></li>
+  <li>DLD API Gateway catalogue: <a href="https://dubailand.gov.ae/en/eservices/api-gateway/">https://dubailand.gov.ae/en/eservices/api-gateway/</a></li>
+  <li>DLD API Gateway registration/terms example: <a href="https://dubailand.gov.ae/en/eservices/api-gateway-registration?appId=3">https://dubailand.gov.ae/en/eservices/api-gateway-registration?appId=3</a></li>
+</ul>
+
+<p class="footer-note"><b>Audit note:</b> Counts are a point-in-time technical assessment, not a contractual statement by DLD. Live totals and gateway behavior can change. Commercial use of personal/contact data and subscription APIs should be reviewed against current DLD terms and applicable UAE privacy/marketing requirements.</p>
+</body>
+</html>

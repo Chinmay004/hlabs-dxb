@@ -32,6 +32,13 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# scheduled sync output
+/logs/
+
+# generated report QA and local render tooling
+/tmp/
 
 # vercel
 .vercel

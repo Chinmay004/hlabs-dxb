@@ -1,0 +1,571 @@
+// Dubai Land Department (DLD / RERA) brokerage + broker registry mirror.
+//
+// Source of truth is the public gateway at gateway.dubailand.gov.ae:
+//   GET /offices/  -> every licensed real-estate brokerage  (~10.2k)
+//   GET /brokers/  -> every licensed broker card            (~34k)
+//
+// The registry itself has no "created at" concept, so every row carries
+// firstSeenAt / lastSeenAt written by our sync. That is what lets us tell a
+// genuinely new licence apart from a renewal of an old one.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Office {
+  realEstateNumber String  @id
+  licenseNumber    String?
+
+  nameEn String?
+  nameAr String?
+
+  /// Original RERA licence issue date for the brokerage. This is the field that
+  /// answers "which brokerages just opened".
+  issueDate  DateTime? @db.Timestamptz(3)
+  expiryDate DateTime? @db.Timestamptz(3)
+
+  phone   String?
+  fax     String?
+  website String?
+
+  contactNameEn String?
+  contactNameAr String?
+  contactMobile String?
+  contactEmail  String?
+
+  logo        String?
+  rankId      Int?
+  rank        String?
+  awardsCount Int     @default(0)
+
+  youtubeUrl   String?
+  facebookUrl  String?
+  instagramUrl String?
+  twitterUrl   String?
+  linkedinUrl  String?
+  whatsapp     String?
+
+  /// [{ id, nameEn, nameAr }] straight from the gateway.
+  activities Json?
+
+  // ---- denormalised rollups, recomputed at the end of each sync ----
+  brokerCount       Int       @default(0)
+  activeBrokerCount Int       @default(0)
+  newBrokers30d     Int       @default(0)
+  newBrokers90d     Int       @default(0)
+  firstCardIssuedAt DateTime? @db.Timestamptz(3)
+  lastCardIssuedAt  DateTime? @db.Timestamptz(3)
+
+  // ---- our own observation window ----
+  /// First sync in which this brokerage appeared. For anything registered after
+  /// we went live this is effectively the discovery date.
+  firstSeenAt DateTime  @default(now()) @db.Timestamptz(3)
+  lastSeenAt  DateTime  @default(now()) @db.Timestamptz(3)
+  /// False once the brokerage stops appearing in the registry (licence dropped).
+  isActive    Boolean   @default(true)
+  deactivatedAt DateTime? @db.Timestamptz(3)
+
+  leadScore Int     @default(0)
+  leadTier  String  @default("D")
+
+  // ---- CRM overlay ----
+  // Owned by humans in Notion. The registry sync never writes these; the Notion
+  // sync pulls them back. `status` holds the Notion Stage string verbatim so
+  // there is exactly one pipeline vocabulary across the whole system.
+  status          String    @default("🆕 New Lead")
+  ownerNote       String?
+  contactedAt     DateTime? @db.Timestamptz(3)
+  ownerName       String?
+  ownerNotionId   String?
+  channel         String?
+  touchpoints     Int       @default(0)
+  nextAction      String?
+  nextActionDate  DateTime? @db.Timestamptz(3)
+  clientPotential String?
+  servicesInterest Json?
+  lostReason      String?
+  dealValueAed    Int?
+
+  // ---- batching ----
+  batchId String?
+  batch   Batch?  @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  // ---- Notion mirror ----
+  notionPageId   String?   @unique
+  notionSyncedAt DateTime? @db.Timestamptz(3)
+  /// Hash of the last payload we pushed. Lets the sync skip unchanged rows
+  /// instead of burning Notion's rate limit rewriting identical values.
+  notionHash     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  brokers Broker[]
+  changes OfficeChange[]
+
+  @@index([issueDate])
+  @@index([firstSeenAt])
+  @@index([expiryDate])
+  @@index([isActive, issueDate])
+  @@index([leadScore])
+  @@index([status])
+  @@index([nameEn])
+  @@index([batchId])
+  @@index([notionSyncedAt])
+  @@map("offices")
+}
+
+model Broker {
+  cardNumber String @id
+
+  nameEn String?
+  nameAr String?
+
+  /// Issue date of the *current* card. Renewals move this forward, so on its own
+  /// it does not mean "new broker" - pair it with firstSeenAt / isNewCard.
+  cardIssueDate  DateTime? @db.Timestamptz(3)
+  cardExpiryDate DateTime? @db.Timestamptz(3)
+
+  phone  String?
+  mobile String?
+  email  String?
+
+  realEstateNumber String?
+  licenseNumber    String?
+  officeNameEn     String?
+  officeNameAr     String?
+  officeIssueDate  DateTime? @db.Timestamptz(3)
+  officeExpiryDate DateTime? @db.Timestamptz(3)
+
+  photo       String?
+  cardRankId  Int?
+  cardRank    String?
+  officeRankId Int?
+  officeRank  String?
+  awardsCount Int     @default(0)
+
+  /// True when this card's number was above the highest number the registry had
+  /// ever shown us before the sync that first saw it - i.e. a first-time licence
+  /// rather than an annual renewal of an older card.
+  ///
+  /// This is the only sound new-vs-renewal test available. The registry
+  /// publishes just the current term, so `cardIssueDate` moves on every renewal,
+  /// and card numbers are only *broadly* chronological - a handful carry dates
+  /// decades out of line with their neighbours, which defeats any attempt to
+  /// reconstruct original issue dates from the numbering alone. Comparing
+  /// against a watermark we recorded ourselves sidesteps that entirely, at the
+  /// cost of only being meaningful from the second sync onward.
+  isNewCard Boolean @default(false)
+
+  firstSeenAt   DateTime  @default(now()) @db.Timestamptz(3)
+  lastSeenAt    DateTime  @default(now()) @db.Timestamptz(3)
+  isActive      Boolean   @default(true)
+  deactivatedAt DateTime? @db.Timestamptz(3)
+
+  // ---- lead scoring (inherited from the firm, adjusted for card recency) ----
+  leadScore Int    @default(0)
+  leadTier  String @default("D")
+
+  // ---- CRM overlay, human-owned in Notion (see Office for the contract) ----
+  status          String    @default("🆕 New Lead")
+  ownerNote       String?
+  contactedAt     DateTime? @db.Timestamptz(3)
+  ownerName       String?
+  ownerNotionId   String?
+  channel         String?
+  touchpoints     Int       @default(0)
+  nextAction      String?
+  nextActionDate  DateTime? @db.Timestamptz(3)
+  clientPotential String?
+  lostReason      String?
+
+  // ---- batching ----
+  batchId String?
+  batch   Batch?  @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  // ---- Notion mirror ----
+  notionPageId   String?   @unique
+  notionSyncedAt DateTime? @db.Timestamptz(3)
+  notionHash     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  office  Office?        @relation(fields: [realEstateNumber], references: [realEstateNumber], onDelete: SetNull)
+  changes BrokerChange[]
+
+  @@index([cardIssueDate])
+  @@index([firstSeenAt])
+  @@index([cardExpiryDate])
+  @@index([realEstateNumber])
+  @@index([isActive, cardIssueDate])
+  @@index([isNewCard])
+  @@index([nameEn])
+  @@index([leadScore])
+  @@index([batchId])
+  @@index([status])
+  @@map("brokers")
+}
+
+/// Field-level audit of everything the registry changed on a brokerage:
+/// renewals, contact-detail edits, rank upgrades, office moves.
+model OfficeChange {
+  id               String   @id @default(cuid())
+  realEstateNumber String
+  field            String
+  oldValue         String?
+  newValue         String?
+  detectedAt       DateTime @default(now()) @db.Timestamptz(3)
+  syncRunId        String?
+
+  office  Office   @relation(fields: [realEstateNumber], references: [realEstateNumber], onDelete: Cascade)
+  syncRun SyncRun? @relation(fields: [syncRunId], references: [id], onDelete: SetNull)
+
+  @@index([realEstateNumber])
+  @@index([detectedAt])
+  @@index([field])
+  @@map("office_changes")
+}
+
+model BrokerChange {
+  id         String   @id @default(cuid())
+  cardNumber String
+  field      String
+  oldValue   String?
+  newValue   String?
+  detectedAt DateTime @default(now()) @db.Timestamptz(3)
+  syncRunId  String?
+
+  broker  Broker   @relation(fields: [cardNumber], references: [cardNumber], onDelete: Cascade)
+  syncRun SyncRun? @relation(fields: [syncRunId], references: [id], onDelete: SetNull)
+
+  @@index([cardNumber])
+  @@index([detectedAt])
+  @@index([field])
+  @@map("broker_changes")
+}
+
+model SyncRun {
+  id     String  @id @default(cuid())
+  /// FULL | INCREMENTAL | BACKFILL
+  kind   String
+  /// RUNNING | SUCCESS | FAILED | PARTIAL
+  status String  @default("RUNNING")
+  /// MANUAL | SCHEDULED | API
+  trigger String @default("MANUAL")
+
+  startedAt  DateTime  @default(now()) @db.Timestamptz(3)
+  finishedAt DateTime? @db.Timestamptz(3)
+  durationMs Int?
+
+  officesSeen       Int @default(0)
+  officesNew        Int @default(0)
+  officesUpdated    Int @default(0)
+  officesDeactivated Int @default(0)
+
+  brokersSeen        Int @default(0)
+  brokersNew         Int @default(0)
+  brokersUpdated     Int @default(0)
+  brokersDeactivated Int @default(0)
+
+  requestCount Int @default(0)
+  errorCount   Int @default(0)
+  error        String?
+  /// Free-form per-stage notes so a failed run is debuggable after the fact.
+  log          Json?
+
+  officeChanges OfficeChange[]
+  brokerChanges BrokerChange[]
+
+  @@index([startedAt])
+  @@index([status])
+  @@map("sync_runs")
+}
+
+/// One row per calendar day, rebuilt after every sync. Powers the date-wise
+/// table and charts without scanning the whole registry on each page load.
+model DailyStat {
+  date DateTime @id @db.Date
+
+  /// Brokerages whose RERA issue date is this day.
+  officesIssued Int @default(0)
+  /// Brokerages our sync discovered on this day.
+  officesDiscovered Int @default(0)
+  officesExpiring   Int @default(0)
+
+  /// Every broker card the registry stamped this day. Includes annual renewals,
+  /// which on a typical day outnumber genuinely new brokers several times over.
+  brokerCardsIssued Int @default(0)
+  /// Of those, cards whose number cleared our high-water mark - genuinely new
+  /// brokers. Zero for every day before our first sync, by construction.
+  brokersNew        Int @default(0)
+  /// Broker cards our sync saw for the first time this day.
+  brokersDiscovered Int @default(0)
+  brokerCardsExpiring Int @default(0)
+
+  /// Brokerages issued this day that still have zero brokers on the books.
+  officesIssuedNoBrokers Int @default(0)
+
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([date])
+  @@map("daily_stats")
+}
+
+/// Key/value store for sync bookkeeping (high-water card number, last full sync).
+model SyncState {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("sync_state")
+}
+
+// ---------------------------------------------------------------------------
+// DLD open-data projects.
+//
+// Unlike /offices/ and /brokers/, POST /open-data/projects requires a calendar
+// window and one of four date selectors. A project can match more than one
+// selector, so the sync unions all four responses and stores `dateMatchTypes`
+// to make the coverage explicit.
+// ---------------------------------------------------------------------------
+
+model Project {
+  projectNumber String @id
+
+  nameEn String?
+  nameAr String?
+
+  developerNumber String?
+  developerNameEn String?
+  developerNameAr String?
+
+  startDate      DateTime? @db.Timestamptz(3)
+  endDate        DateTime? @db.Timestamptz(3)
+  /// DLD's project registration/adoption timestamp. This is the closest source
+  /// field to a publication date and drives the "published" year/month views.
+  adoptionDate   DateTime? @db.Timestamptz(3)
+  inspectionDate DateTime? @db.Timestamptz(3)
+  completionDate DateTime? @db.Timestamptz(3)
+
+  projectTypeEn String?
+  projectTypeAr String?
+  projectValueAed Decimal? @db.Decimal(20, 2)
+  escrowAccountNumber String?
+  status String?
+  percentCompleted Decimal? @db.Decimal(7, 2)
+
+  descriptionEn String?
+  descriptionAr String?
+  areaEn String?
+  areaAr String?
+  zoneEn String?
+  zoneAr String?
+  masterProjectEn String?
+  masterProjectAr String?
+
+  totalLands     Int @default(0)
+  totalBuildings Int @default(0)
+  totalVillas    Int @default(0)
+  totalUnits     Int @default(0)
+  totalInventory Int @default(0)
+
+  /// 1=start, 2=end, 3=adoption, 4=completion. A row may contain several.
+  dateMatchTypes Int[]
+  /// Calendar year used in the four required gateway date-window calls.
+  sourceYear Int
+  sourceHash String
+  rawSource Json
+
+  firstSeenAt DateTime @default(now()) @db.Timestamptz(3)
+  lastSeenAt  DateTime @default(now()) @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([adoptionDate])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([completionDate])
+  @@index([inspectionDate])
+  @@index([status])
+  @@index([areaEn])
+  @@index([developerNumber])
+  @@index([developerNameEn])
+  @@index([projectTypeEn])
+  @@index([sourceYear])
+  @@map("projects")
+}
+
+model ProjectSyncRun {
+  id String @id @default(cuid())
+  /// MANUAL | SCHEDULED | API
+  trigger String @default("MANUAL")
+  /// RUNNING | SUCCESS | FAILED
+  status String @default("RUNNING")
+  sourceYear Int
+
+  startedAt  DateTime @default(now()) @db.Timestamptz(3)
+  finishedAt DateTime? @db.Timestamptz(3)
+  durationMs Int?
+
+  projectsSeen    Int @default(0)
+  projectsNew     Int @default(0)
+  projectsUpdated Int @default(0)
+  requestCount    Int @default(0)
+  errorCount      Int @default(0)
+  error           String?
+  log             Json?
+
+  @@index([startedAt])
+  @@index([status])
+  @@map("project_sync_runs")
+}
+
+// ---------------------------------------------------------------------------
+// CRM: batching, targets and the Notion mirror.
+//
+// Postgres is the system of record for everything the registry tells us and for
+// all batch/target bookkeeping. Notion is the surface humans work on. The
+// contract between them lives in docs/CRM_PROTOCOL.md — read it before changing
+// anything here.
+// ---------------------------------------------------------------------------
+
+/// A day's worth of outreach for one person: ~25 leads, one owner, one due date.
+///
+/// Batches are cut automatically from the highest-scoring unbatched leads, so
+/// the team always works the freshest, most promising firms first rather than
+/// whatever happens to be at the top of a list.
+model Batch {
+  id   String @id @default(cuid())
+  /// Human-readable stable key, e.g. BRG-2026-W31-01. Also the Notion title.
+  code String @unique
+
+  /// BROKERAGE | BROKER
+  kind String
+  /// Queued | In Progress | Completed | Delayed | Cancelled. Humans own this in
+  /// Notion; the sync only forces Delayed/Completed when the facts demand it.
+  status String @default("Queued")
+
+  size   Int @default(0)
+  worked Int @default(0)
+
+  /// Dominant lead tier across the batch (A+/A/B/C/Mixed).
+  priorityBand String?
+  avgLeadScore Int?
+
+  assignedName         String?
+  assignedNotionUserId String?
+
+  assignedDate  DateTime  @db.Timestamptz(3)
+  /// assignedDate + SLA working days. Every delay figure derives from this.
+  dueDate       DateTime  @db.Timestamptz(3)
+  completedDate DateTime? @db.Timestamptz(3)
+
+  /// Whole days past dueDate while still unfinished. 0 when on track.
+  daysOverdue Int @default(0)
+  /// Delay inherited from the previous unfinished batch in the same lane. This
+  /// is what surfaces "delayed on top of delayed" rather than showing each
+  /// batch as independently a day late.
+  cascadeDelayDays Int @default(0)
+  /// On Track | Due Today | Overdue | Critically Overdue | Done On Time | Done Late
+  delayStatus      String @default("On Track")
+
+  blockedByBatchId String?
+  blockedBy        Batch?  @relation("BatchChain", fields: [blockedByBatchId], references: [id], onDelete: SetNull)
+  blocks           Batch[] @relation("BatchChain")
+
+  notes String?
+
+  notionPageId   String?   @unique
+  notionSyncedAt DateTime? @db.Timestamptz(3)
+  notionHash     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  offices Office[]
+  brokers Broker[]
+
+  @@index([kind, status])
+  @@index([dueDate])
+  @@index([delayStatus])
+  @@index([assignedDate])
+  @@map("batches")
+}
+
+/// Daily / weekly / monthly goals. Targets are set by humans in Notion; actuals
+/// are counted here and pushed back, so attainment is never hand-maintained.
+model Target {
+  id String @id @default(cuid())
+  /// 2026-07-27 (daily) | 2026-W31 (weekly) | 2026-07 (monthly).
+  periodKey String @unique
+  /// DAILY | WEEKLY | MONTHLY
+  kind      String
+
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+
+  targetTouches  Int @default(0)
+  actualTouches  Int @default(0)
+  targetBatches  Int @default(0)
+  actualBatches  Int @default(0)
+  targetReplies  Int @default(0)
+  actualReplies  Int @default(0)
+  targetMeetings Int @default(0)
+  actualMeetings Int @default(0)
+
+  /// On Track | At Risk | Behind | Hit | Missed | Upcoming
+  status String @default("Upcoming")
+  notes  String?
+
+  notionPageId   String?   @unique
+  notionSyncedAt DateTime? @db.Timestamptz(3)
+  notionHash     String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([kind, startDate])
+  @@index([status])
+  @@map("targets")
+}
+
+/// Audit of every Notion push/pull, mirroring SyncRun for the registry crawl.
+model NotionSyncRun {
+  id      String @id @default(cuid())
+  /// FULL | PUSH | PULL
+  kind    String
+  /// RUNNING | SUCCESS | FAILED | PARTIAL
+  status  String @default("RUNNING")
+  /// MANUAL | SCHEDULED | API
+  trigger String @default("MANUAL")
+
+  startedAt  DateTime  @default(now()) @db.Timestamptz(3)
+  finishedAt DateTime? @db.Timestamptz(3)
+  durationMs Int?
+
+  batchesCreated Int @default(0)
+  pushedOffices  Int @default(0)
+  pushedBrokers  Int @default(0)
+  pushedBatches  Int @default(0)
+  pushedTargets  Int @default(0)
+  pulledOffices  Int @default(0)
+  pulledBrokers  Int @default(0)
+  pulledBatches  Int @default(0)
+  skipped        Int @default(0)
+
+  requestCount Int     @default(0)
+  errorCount   Int     @default(0)
+  error        String?
+  log          Json?
+
+  @@index([startedAt])
+  @@index([status])
+  @@map("notion_sync_runs")
+}

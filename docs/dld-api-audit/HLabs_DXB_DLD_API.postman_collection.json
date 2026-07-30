@@ -1,0 +1,909 @@
+{
+  "info": {
+    "_postman_id": "81df0381-fb02-4b39-bfa5-d7f9bea3b6fb",
+    "name": "HLabs DXB - Dubai Land Department Registry Gateway",
+    "description": "Audited and revised from hlabs-dxb on 28 July 2026. Covers offices, brokers and POST /open-data/projects. Registry runtime and dormant helpers are labelled; the projects request is parameterized for all four required date selectors. Saved 200 examples preserve every response field and data type. Personal registry examples are sanitized; project data is public DLD project data.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://gateway.dubailand.gov.ae",
+      "type": "string"
+    },
+    {
+      "key": "consumerId",
+      "value": "gkb3WvEG0rY9eilwXC0P2pTz8UzvLj9F",
+      "type": "string",
+      "description": "Public consumer ID currently checked into the project. Move to a private environment if DLD changes its access model."
+    },
+    {
+      "key": "pageSize",
+      "value": "1000",
+      "type": "string"
+    },
+    {
+      "key": "pageIndex",
+      "value": "0",
+      "type": "string"
+    },
+    {
+      "key": "officeNumber",
+      "value": "1007",
+      "type": "string"
+    },
+    {
+      "key": "cardNumber",
+      "value": "689",
+      "type": "string"
+    },
+    {
+      "key": "projectFromDate",
+      "value": "01/01/2026",
+      "type": "string",
+      "description": "Projects API format is MM/DD/YYYY."
+    },
+    {
+      "key": "projectToDate",
+      "value": "12/31/2026",
+      "type": "string",
+      "description": "Projects API format is MM/DD/YYYY."
+    },
+    {
+      "key": "projectDateType",
+      "value": "1",
+      "type": "string",
+      "description": "1=start, 2=end, 3=adoption/registration, 4=completion. The application runs all four and deduplicates the union."
+    },
+    {
+      "key": "projectTake",
+      "value": "1",
+      "type": "string",
+      "description": "Use 1 for diagnostics. The production sync uses -1 to retrieve the complete selector window in one call."
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Runtime bulk crawl",
+      "description": "Both requests are used on every registry sync. pageIndex is zero-based; short pages are not terminal because the gateway repeats and drops rows across boundaries.",
+      "item": [
+        {
+          "name": "Offices - one page",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, text/plain, */*",
+                "type": "text"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en-US,en;q=0.9",
+                "type": "text"
+              },
+              {
+                "key": "User-Agent",
+                "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                "type": "text",
+                "description": "Required: the gateway returns 403 to plain/non-browser clients."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/offices/?consumer-id={{consumerId}}&pageSize={{pageSize}}&pageIndex={{pageIndex}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "offices"
+              ],
+              "query": [
+                {
+                  "key": "consumer-id",
+                  "value": "{{consumerId}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "{{pageSize}}"
+                },
+                {
+                  "key": "pageIndex",
+                  "value": "{{pageIndex}}"
+                }
+              ]
+            },
+            "description": "USED. GET /offices/ full-crawl page. Current live total at audit: 10,178. The sync uses pageSize=1000 and deduplicates by RealEstateNumber."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('DLD envelope is present', () => {",
+                  "  pm.expect(body).to.include.keys('Response', 'TimeStamp', 'Errors', 'ExceptionId', 'Token', 'TotalRowsCount');",
+                  "  pm.expect(body.Response).to.be.an('array');",
+                  "});",
+                  "pm.test('Gateway reported no logical errors', () => {",
+                  "  pm.expect(body.Errors || []).to.be.an('array').that.is.empty;",
+                  "  pm.expect(body.ExceptionId).to.equal(null);",
+                  "});",
+                  "pm.test('Office rows expose the expected key', () => { if (body.Response.length) pm.expect(body.Response[0]).to.have.property('RealEstateNumber'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Sanitized live-derived example - 200 OK - 2026-07-28T15:06:00+04:00",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json, text/plain, */*",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en-US,en;q=0.9",
+                    "type": "text"
+                  },
+                  {
+                    "key": "User-Agent",
+                    "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                    "type": "text",
+                    "description": "Required: the gateway returns 403 to plain/non-browser clients."
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/offices/?consumer-id={{consumerId}}&pageSize={{pageSize}}&pageIndex={{pageIndex}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "offices"
+                  ],
+                  "query": [
+                    {
+                      "key": "consumer-id",
+                      "value": "{{consumerId}}"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "{{pageSize}}"
+                    },
+                    {
+                      "key": "pageIndex",
+                      "value": "{{pageIndex}}"
+                    }
+                  ]
+                },
+                "description": "USED. GET /offices/ full-crawl page. Current live total at audit: 10,178. The sync uses pageSize=1000 and deduplicates by RealEstateNumber."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"Response\": [\n    {\n      \"RowIndex\": 1,\n      \"TotalRowsCount\": 10178,\n      \"RealEstateNumber\": \"1007\",\n      \"LicenseNumber\": \"602322\",\n      \"OfficeNameAr\": \"شركة عقارية تجريبية ذ.م.م\",\n      \"OfficeNameEn\": \"SAMPLE REAL ESTATE BROKERS L.L.C\",\n      \"OfficeIssueDate\": \"2007-10-29T00:00:00\",\n      \"OfficeExpiryDate\": \"2026-10-28T00:00:00\",\n      \"OfficeFax\": \"971-4-0000001\",\n      \"OfficePhone\": \"971-4-0000002\",\n      \"OfficeWebSite\": \"https://example.invalid\",\n      \"ContactPersonNameAr\": \"جهة اتصال تجريبية\",\n      \"ContactPersonNameEn\": \"SAMPLE CONTACT\",\n      \"ContactPersonMobile\": \"0500000000\",\n      \"ContactPersonEmail\": \"contact@example.invalid\",\n      \"OfficeLogo\": \"https://mobile.dubailand.gov.ae/companylogos/1007.jpg\",\n      \"OfficeRankId\": 4,\n      \"OfficeRank\": \"GOLD\",\n      \"AwardsCount\": 0,\n      \"YouTubeUrl\": null,\n      \"FaceBookUrl\": null,\n      \"InstagramUrl\": \"https://instagram.com/sample\",\n      \"TwitterUrl\": null,\n      \"LinkedInUrl\": null,\n      \"WhatsAppBusinessNumber\": null,\n      \"Activities\": [\n        {\n          \"ActivityId\": 2,\n          \"ActivityNameAr\": \"الوساطة في بيع العقارات وشرائها\",\n          \"ActivityNameEn\": \"Real Estate Buying & Selling Brokerage\"\n        },\n        {\n          \"ActivityId\": 5,\n          \"ActivityNameAr\": \"الوساطة في تأجير العقارات\",\n          \"ActivityNameEn\": \"Leasing Property Brokerage Agents\"\n        }\n      ]\n    },\n    {\n      \"RowIndex\": 2,\n      \"TotalRowsCount\": 10178,\n      \"RealEstateNumber\": \"23173\",\n      \"LicenseNumber\": \"848669\",\n      \"OfficeNameAr\": \"شركة عقارية تجريبية ذ.م.م\",\n      \"OfficeNameEn\": \"SECOND SAMPLE REAL ESTATE L.L.C\",\n      \"OfficeIssueDate\": \"2007-10-29T00:00:00\",\n      \"OfficeExpiryDate\": \"2026-10-28T00:00:00\",\n      \"OfficeFax\": \"971-4-0000001\",\n      \"OfficePhone\": \"971-4-0000002\",\n      \"OfficeWebSite\": \"https://example.invalid\",\n      \"ContactPersonNameAr\": \"جهة اتصال تجريبية\",\n      \"ContactPersonNameEn\": \"SAMPLE CONTACT\",\n      \"ContactPersonMobile\": \"0500000000\",\n      \"ContactPersonEmail\": \"contact@example.invalid\",\n      \"OfficeLogo\": \"https://mobile.dubailand.gov.ae/companylogos/1007.jpg\",\n      \"OfficeRankId\": 4,\n      \"OfficeRank\": \"GOLD\",\n      \"AwardsCount\": 0,\n      \"YouTubeUrl\": null,\n      \"FaceBookUrl\": null,\n      \"InstagramUrl\": \"https://instagram.com/sample\",\n      \"TwitterUrl\": null,\n      \"LinkedInUrl\": null,\n      \"WhatsAppBusinessNumber\": null,\n      \"Activities\": [\n        {\n          \"ActivityId\": 2,\n          \"ActivityNameAr\": \"الوساطة في بيع العقارات وشرائها\",\n          \"ActivityNameEn\": \"Real Estate Buying & Selling Brokerage\"\n        },\n        {\n          \"ActivityId\": 5,\n          \"ActivityNameAr\": \"الوساطة في تأجير العقارات\",\n          \"ActivityNameEn\": \"Leasing Property Brokerage Agents\"\n        }\n      ]\n    }\n  ],\n  \"TimeStamp\": \"2026-07-28T15:06:00+04:00\",\n  \"Errors\": [],\n  \"ExceptionId\": null,\n  \"ActionUserId\": null,\n  \"Token\": null,\n  \"TotalRowsCount\": 10178\n}"
+            }
+          ]
+        },
+        {
+          "name": "Brokers - one page",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, text/plain, */*",
+                "type": "text"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en-US,en;q=0.9",
+                "type": "text"
+              },
+              {
+                "key": "User-Agent",
+                "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                "type": "text",
+                "description": "Required: the gateway returns 403 to plain/non-browser clients."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/brokers/?consumer-id={{consumerId}}&pageSize={{pageSize}}&pageIndex={{pageIndex}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "brokers"
+              ],
+              "query": [
+                {
+                  "key": "consumer-id",
+                  "value": "{{consumerId}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "{{pageSize}}"
+                },
+                {
+                  "key": "pageIndex",
+                  "value": "{{pageIndex}}"
+                }
+              ]
+            },
+            "description": "USED. GET /brokers/ full-crawl page. Current live total at audit: 34,093. The sync uses pageSize=1000 and deduplicates by CardNumber."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('DLD envelope is present', () => {",
+                  "  pm.expect(body).to.include.keys('Response', 'TimeStamp', 'Errors', 'ExceptionId', 'Token', 'TotalRowsCount');",
+                  "  pm.expect(body.Response).to.be.an('array');",
+                  "});",
+                  "pm.test('Gateway reported no logical errors', () => {",
+                  "  pm.expect(body.Errors || []).to.be.an('array').that.is.empty;",
+                  "  pm.expect(body.ExceptionId).to.equal(null);",
+                  "});",
+                  "pm.test('Broker rows expose the expected key', () => { if (body.Response.length) pm.expect(body.Response[0]).to.have.property('CardNumber'); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Sanitized live-derived example - 200 OK - 2026-07-28T15:06:00+04:00",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json, text/plain, */*",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en-US,en;q=0.9",
+                    "type": "text"
+                  },
+                  {
+                    "key": "User-Agent",
+                    "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                    "type": "text",
+                    "description": "Required: the gateway returns 403 to plain/non-browser clients."
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/brokers/?consumer-id={{consumerId}}&pageSize={{pageSize}}&pageIndex={{pageIndex}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "brokers"
+                  ],
+                  "query": [
+                    {
+                      "key": "consumer-id",
+                      "value": "{{consumerId}}"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "{{pageSize}}"
+                    },
+                    {
+                      "key": "pageIndex",
+                      "value": "{{pageIndex}}"
+                    }
+                  ]
+                },
+                "description": "USED. GET /brokers/ full-crawl page. Current live total at audit: 34,093. The sync uses pageSize=1000 and deduplicates by CardNumber."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"Response\": [\n    {\n      \"RowIndex\": 1,\n      \"TotalRowsCount\": 34093,\n      \"CardNumber\": \"689\",\n      \"CardHolderNameAr\": \"وسيط تجريبي\",\n      \"CardHolderNameEn\": \"SAMPLE BROKER\",\n      \"CardIssueDate\": \"2011-02-06T00:00:00\",\n      \"CardExpiryDate\": \"2026-10-25T00:00:00\",\n      \"CardHolderPhone\": \"971|0500000000\",\n      \"CardHolderMobile\": \"0500000000\",\n      \"CardHolderEmail\": \"broker@example.invalid\",\n      \"RealEstateNumber\": \"2004\",\n      \"LicenseNumber\": \"-\",\n      \"OfficeNameAr\": \"مكتب عقاري تجريبي\",\n      \"OfficeNameEn\": \"SAMPLE PROPERTY BROKER L.L.C\",\n      \"OfficeIssueDate\": \"2008-10-26T00:00:00\",\n      \"OfficeExpiryDate\": \"2026-10-25T00:00:00\",\n      \"CardHolderPhoto\": \"https://mobile.dubailand.gov.ae/brokerphoto/sample.jpg\",\n      \"OfficeLogo\": \"https://mobile.dubailand.gov.ae/companylogos/2004.jpg\",\n      \"OfficeRankId\": 4,\n      \"OfficeRank\": \"GOLD\",\n      \"CardRankId\": 10,\n      \"CardRank\": \"Five Stars\",\n      \"AwardsCount\": 0,\n      \"SearchMatchTypeNameAr\": null,\n      \"SearchMatchTypeNameEn\": null\n    },\n    {\n      \"RowIndex\": 2,\n      \"TotalRowsCount\": 34093,\n      \"CardNumber\": \"8515\",\n      \"CardHolderNameAr\": \"وسيط تجريبي\",\n      \"CardHolderNameEn\": \"SECOND SAMPLE BROKER\",\n      \"CardIssueDate\": \"2011-02-06T00:00:00\",\n      \"CardExpiryDate\": \"2026-10-25T00:00:00\",\n      \"CardHolderPhone\": \"971|0500000000\",\n      \"CardHolderMobile\": \"0500000000\",\n      \"CardHolderEmail\": \"broker@example.invalid\",\n      \"RealEstateNumber\": \"813\",\n      \"LicenseNumber\": \"-\",\n      \"OfficeNameAr\": \"مكتب عقاري تجريبي\",\n      \"OfficeNameEn\": \"SAMPLE PROPERTY BROKER L.L.C\",\n      \"OfficeIssueDate\": \"2008-10-26T00:00:00\",\n      \"OfficeExpiryDate\": \"2026-10-25T00:00:00\",\n      \"CardHolderPhoto\": \"https://mobile.dubailand.gov.ae/brokerphoto/sample.jpg\",\n      \"OfficeLogo\": \"https://mobile.dubailand.gov.ae/companylogos/2004.jpg\",\n      \"OfficeRankId\": 4,\n      \"OfficeRank\": \"GOLD\",\n      \"CardRankId\": 10,\n      \"CardRank\": \"Five Stars\",\n      \"AwardsCount\": 0,\n      \"SearchMatchTypeNameAr\": null,\n      \"SearchMatchTypeNameEn\": null\n    }\n  ],\n  \"TimeStamp\": \"2026-07-28T15:06:00+04:00\",\n  \"Errors\": [],\n  \"ExceptionId\": null,\n  \"ActionUserId\": null,\n  \"Token\": null,\n  \"TotalRowsCount\": 34093\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Runtime roster reconciliation",
+      "description": "Used after the bulk crawl to obtain an exact broker roster for selected offices. The regular run selects recently licensed, zero-broker and newly seen offices; the deep run selects every active office.",
+      "item": [
+        {
+          "name": "Brokers for one office",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, text/plain, */*",
+                "type": "text"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en-US,en;q=0.9",
+                "type": "text"
+              },
+              {
+                "key": "User-Agent",
+                "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                "type": "text",
+                "description": "Required: the gateway returns 403 to plain/non-browser clients."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/brokers/?consumer-id={{consumerId}}&officeNumber={{officeNumber}}&pageSize=500&pageIndex={{pageIndex}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "brokers"
+              ],
+              "query": [
+                {
+                  "key": "consumer-id",
+                  "value": "{{consumerId}}"
+                },
+                {
+                  "key": "officeNumber",
+                  "value": "{{officeNumber}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "500"
+                },
+                {
+                  "key": "pageIndex",
+                  "value": "{{pageIndex}}"
+                }
+              ]
+            },
+            "description": "USED. GET /brokers/?officeNumber=. The code uses pageSize=500. At the audited snapshot the largest office has 468 active brokers, so every current office fits in one logical request, excluding retries."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('DLD envelope is present', () => {",
+                  "  pm.expect(body).to.include.keys('Response', 'TimeStamp', 'Errors', 'ExceptionId', 'Token', 'TotalRowsCount');",
+                  "  pm.expect(body.Response).to.be.an('array');",
+                  "});",
+                  "pm.test('Gateway reported no logical errors', () => {",
+                  "  pm.expect(body.Errors || []).to.be.an('array').that.is.empty;",
+                  "  pm.expect(body.ExceptionId).to.equal(null);",
+                  "});",
+                  "pm.test('All returned brokers match officeNumber', () => { body.Response.forEach(r => pm.expect(String(r.RealEstateNumber)).to.equal(String(pm.variables.get('officeNumber')))); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Sanitized live-derived example - 200 OK - 2026-07-28T15:06:00+04:00",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json, text/plain, */*",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en-US,en;q=0.9",
+                    "type": "text"
+                  },
+                  {
+                    "key": "User-Agent",
+                    "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                    "type": "text",
+                    "description": "Required: the gateway returns 403 to plain/non-browser clients."
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/brokers/?consumer-id={{consumerId}}&officeNumber={{officeNumber}}&pageSize=500&pageIndex={{pageIndex}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "brokers"
+                  ],
+                  "query": [
+                    {
+                      "key": "consumer-id",
+                      "value": "{{consumerId}}"
+                    },
+                    {
+                      "key": "officeNumber",
+                      "value": "{{officeNumber}}"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "500"
+                    },
+                    {
+                      "key": "pageIndex",
+                      "value": "{{pageIndex}}"
+                    }
+                  ]
+                },
+                "description": "USED. GET /brokers/?officeNumber=. The code uses pageSize=500. At the audited snapshot the largest office has 468 active brokers, so every current office fits in one logical request, excluding retries."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"Response\": [\n    {\n      \"RowIndex\": 1,\n      \"TotalRowsCount\": 18,\n      \"CardNumber\": \"689\",\n      \"CardHolderNameAr\": \"وسيط تجريبي\",\n      \"CardHolderNameEn\": \"SAMPLE BROKER\",\n      \"CardIssueDate\": \"2011-02-06T00:00:00\",\n      \"CardExpiryDate\": \"2026-10-25T00:00:00\",\n      \"CardHolderPhone\": \"971|0500000000\",\n      \"CardHolderMobile\": \"0500000000\",\n      \"CardHolderEmail\": \"broker@example.invalid\",\n      \"RealEstateNumber\": \"1007\",\n      \"LicenseNumber\": \"-\",\n      \"OfficeNameAr\": \"مكتب عقاري تجريبي\",\n      \"OfficeNameEn\": \"SAMPLE REAL ESTATE BROKERS L.L.C\",\n      \"OfficeIssueDate\": \"2008-10-26T00:00:00\",\n      \"OfficeExpiryDate\": \"2026-10-25T00:00:00\",\n      \"CardHolderPhoto\": \"https://mobile.dubailand.gov.ae/brokerphoto/sample.jpg\",\n      \"OfficeLogo\": \"https://mobile.dubailand.gov.ae/companylogos/2004.jpg\",\n      \"OfficeRankId\": 4,\n      \"OfficeRank\": \"GOLD\",\n      \"CardRankId\": 10,\n      \"CardRank\": \"Five Stars\",\n      \"AwardsCount\": 0,\n      \"SearchMatchTypeNameAr\": null,\n      \"SearchMatchTypeNameEn\": null\n    },\n    {\n      \"RowIndex\": 2,\n      \"TotalRowsCount\": 18,\n      \"CardNumber\": \"5523\",\n      \"CardHolderNameAr\": \"وسيط تجريبي\",\n      \"CardHolderNameEn\": \"SAMPLE BROKER\",\n      \"CardIssueDate\": \"2011-02-06T00:00:00\",\n      \"CardExpiryDate\": \"2026-10-25T00:00:00\",\n      \"CardHolderPhone\": \"971|0500000000\",\n      \"CardHolderMobile\": \"0500000000\",\n      \"CardHolderEmail\": \"broker@example.invalid\",\n      \"RealEstateNumber\": \"1007\",\n      \"LicenseNumber\": \"-\",\n      \"OfficeNameAr\": \"مكتب عقاري تجريبي\",\n      \"OfficeNameEn\": \"SAMPLE REAL ESTATE BROKERS L.L.C\",\n      \"OfficeIssueDate\": \"2008-10-26T00:00:00\",\n      \"OfficeExpiryDate\": \"2026-10-25T00:00:00\",\n      \"CardHolderPhoto\": \"https://mobile.dubailand.gov.ae/brokerphoto/sample.jpg\",\n      \"OfficeLogo\": \"https://mobile.dubailand.gov.ae/companylogos/2004.jpg\",\n      \"OfficeRankId\": 4,\n      \"OfficeRank\": \"GOLD\",\n      \"CardRankId\": 10,\n      \"CardRank\": \"Five Stars\",\n      \"AwardsCount\": 0,\n      \"SearchMatchTypeNameAr\": null,\n      \"SearchMatchTypeNameEn\": null\n    }\n  ],\n  \"TimeStamp\": \"2026-07-28T15:06:00+04:00\",\n  \"Errors\": [],\n  \"ExceptionId\": null,\n  \"ActionUserId\": null,\n  \"Token\": null,\n  \"TotalRowsCount\": 18\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Implemented point lookups (currently dormant)",
+      "description": "These helpers exist in lib/dld/client.ts but no application code imports or calls them as of the audit.",
+      "item": [
+        {
+          "name": "Single office by RERA number",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, text/plain, */*",
+                "type": "text"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en-US,en;q=0.9",
+                "type": "text"
+              },
+              {
+                "key": "User-Agent",
+                "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                "type": "text",
+                "description": "Required: the gateway returns 403 to plain/non-browser clients."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/offices/?consumer-id={{consumerId}}&officeNumber={{officeNumber}}&pageSize=5",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "offices"
+              ],
+              "query": [
+                {
+                  "key": "consumer-id",
+                  "value": "{{consumerId}}"
+                },
+                {
+                  "key": "officeNumber",
+                  "value": "{{officeNumber}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "DORMANT. Implemented as fetchOffice(). An unmatched officeNumber returns an empty Response array."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('DLD envelope is present', () => {",
+                  "  pm.expect(body).to.include.keys('Response', 'TimeStamp', 'Errors', 'ExceptionId', 'Token', 'TotalRowsCount');",
+                  "  pm.expect(body.Response).to.be.an('array');",
+                  "});",
+                  "pm.test('Gateway reported no logical errors', () => {",
+                  "  pm.expect(body.Errors || []).to.be.an('array').that.is.empty;",
+                  "  pm.expect(body.ExceptionId).to.equal(null);",
+                  "});",
+                  "pm.test('At most one office is returned', () => pm.expect(body.Response.length).to.be.at.most(1));"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Sanitized live-derived example - 200 OK - 2026-07-28T15:06:00+04:00",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json, text/plain, */*",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en-US,en;q=0.9",
+                    "type": "text"
+                  },
+                  {
+                    "key": "User-Agent",
+                    "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                    "type": "text",
+                    "description": "Required: the gateway returns 403 to plain/non-browser clients."
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/offices/?consumer-id={{consumerId}}&officeNumber={{officeNumber}}&pageSize=5",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "offices"
+                  ],
+                  "query": [
+                    {
+                      "key": "consumer-id",
+                      "value": "{{consumerId}}"
+                    },
+                    {
+                      "key": "officeNumber",
+                      "value": "{{officeNumber}}"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "5"
+                    }
+                  ]
+                },
+                "description": "DORMANT. Implemented as fetchOffice(). An unmatched officeNumber returns an empty Response array."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"Response\": [\n    {\n      \"RowIndex\": 1,\n      \"TotalRowsCount\": 1,\n      \"RealEstateNumber\": \"1007\",\n      \"LicenseNumber\": \"602322\",\n      \"OfficeNameAr\": \"شركة عقارية تجريبية ذ.م.م\",\n      \"OfficeNameEn\": \"SAMPLE REAL ESTATE BROKERS L.L.C\",\n      \"OfficeIssueDate\": \"2007-10-29T00:00:00\",\n      \"OfficeExpiryDate\": \"2026-10-28T00:00:00\",\n      \"OfficeFax\": \"971-4-0000001\",\n      \"OfficePhone\": \"971-4-0000002\",\n      \"OfficeWebSite\": \"https://example.invalid\",\n      \"ContactPersonNameAr\": \"جهة اتصال تجريبية\",\n      \"ContactPersonNameEn\": \"SAMPLE CONTACT\",\n      \"ContactPersonMobile\": \"0500000000\",\n      \"ContactPersonEmail\": \"contact@example.invalid\",\n      \"OfficeLogo\": \"https://mobile.dubailand.gov.ae/companylogos/1007.jpg\",\n      \"OfficeRankId\": 4,\n      \"OfficeRank\": \"GOLD\",\n      \"AwardsCount\": 0,\n      \"YouTubeUrl\": null,\n      \"FaceBookUrl\": null,\n      \"InstagramUrl\": \"https://instagram.com/sample\",\n      \"TwitterUrl\": null,\n      \"LinkedInUrl\": null,\n      \"WhatsAppBusinessNumber\": null,\n      \"Activities\": [\n        {\n          \"ActivityId\": 2,\n          \"ActivityNameAr\": \"الوساطة في بيع العقارات وشرائها\",\n          \"ActivityNameEn\": \"Real Estate Buying & Selling Brokerage\"\n        },\n        {\n          \"ActivityId\": 5,\n          \"ActivityNameAr\": \"الوساطة في تأجير العقارات\",\n          \"ActivityNameEn\": \"Leasing Property Brokerage Agents\"\n        }\n      ]\n    }\n  ],\n  \"TimeStamp\": \"2026-07-28T15:06:00+04:00\",\n  \"Errors\": [],\n  \"ExceptionId\": null,\n  \"ActionUserId\": null,\n  \"Token\": null,\n  \"TotalRowsCount\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "Single broker by card number",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, text/plain, */*",
+                "type": "text"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en-US,en;q=0.9",
+                "type": "text"
+              },
+              {
+                "key": "User-Agent",
+                "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                "type": "text",
+                "description": "Required: the gateway returns 403 to plain/non-browser clients."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/brokers/?consumer-id={{consumerId}}&cardNumber={{cardNumber}}&pageSize=5",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "brokers"
+              ],
+              "query": [
+                {
+                  "key": "consumer-id",
+                  "value": "{{consumerId}}"
+                },
+                {
+                  "key": "cardNumber",
+                  "value": "{{cardNumber}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "DORMANT. Implemented as fetchBrokerByCard(). The application defensively verifies CardNumber because an unknown cardNumber can fall back to an unfiltered listing."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('DLD envelope is present', () => {",
+                  "  pm.expect(body).to.include.keys('Response', 'TimeStamp', 'Errors', 'ExceptionId', 'Token', 'TotalRowsCount');",
+                  "  pm.expect(body.Response).to.be.an('array');",
+                  "});",
+                  "pm.test('Gateway reported no logical errors', () => {",
+                  "  pm.expect(body.Errors || []).to.be.an('array').that.is.empty;",
+                  "  pm.expect(body.ExceptionId).to.equal(null);",
+                  "});",
+                  "pm.test('Returned match is the requested card', () => { if (body.Response.length) pm.expect(String(body.Response[0].CardNumber)).to.equal(String(pm.variables.get('cardNumber'))); });"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Sanitized live-derived example - 200 OK - 2026-07-28T15:06:00+04:00",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json, text/plain, */*",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en-US,en;q=0.9",
+                    "type": "text"
+                  },
+                  {
+                    "key": "User-Agent",
+                    "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                    "type": "text",
+                    "description": "Required: the gateway returns 403 to plain/non-browser clients."
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/brokers/?consumer-id={{consumerId}}&cardNumber={{cardNumber}}&pageSize=5",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "brokers"
+                  ],
+                  "query": [
+                    {
+                      "key": "consumer-id",
+                      "value": "{{consumerId}}"
+                    },
+                    {
+                      "key": "cardNumber",
+                      "value": "{{cardNumber}}"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "5"
+                    }
+                  ]
+                },
+                "description": "DORMANT. Implemented as fetchBrokerByCard(). The application defensively verifies CardNumber because an unknown cardNumber can fall back to an unfiltered listing."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"Response\": [\n    {\n      \"RowIndex\": 1,\n      \"TotalRowsCount\": 1,\n      \"CardNumber\": \"689\",\n      \"CardHolderNameAr\": \"وسيط تجريبي\",\n      \"CardHolderNameEn\": \"SAMPLE BROKER\",\n      \"CardIssueDate\": \"2011-02-06T00:00:00\",\n      \"CardExpiryDate\": \"2026-10-25T00:00:00\",\n      \"CardHolderPhone\": \"971|0500000000\",\n      \"CardHolderMobile\": \"0500000000\",\n      \"CardHolderEmail\": \"broker@example.invalid\",\n      \"RealEstateNumber\": \"2004\",\n      \"LicenseNumber\": \"-\",\n      \"OfficeNameAr\": \"مكتب عقاري تجريبي\",\n      \"OfficeNameEn\": \"SAMPLE PROPERTY BROKER L.L.C\",\n      \"OfficeIssueDate\": \"2008-10-26T00:00:00\",\n      \"OfficeExpiryDate\": \"2026-10-25T00:00:00\",\n      \"CardHolderPhoto\": \"https://mobile.dubailand.gov.ae/brokerphoto/sample.jpg\",\n      \"OfficeLogo\": \"https://mobile.dubailand.gov.ae/companylogos/2004.jpg\",\n      \"OfficeRankId\": 4,\n      \"OfficeRank\": \"GOLD\",\n      \"CardRankId\": 10,\n      \"CardRank\": \"Five Stars\",\n      \"AwardsCount\": 0,\n      \"SearchMatchTypeNameAr\": null,\n      \"SearchMatchTypeNameEn\": null\n    }\n  ],\n  \"TimeStamp\": \"2026-07-28T15:06:00+04:00\",\n  \"Errors\": [],\n  \"ExceptionId\": null,\n  \"ActionUserId\": null,\n  \"Token\": null,\n  \"TotalRowsCount\": 1\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - Projects open data (runtime)",
+      "description": "The application runs this POST four times with projectDateType 1, 2, 3 and 4, then deduplicates by PROJECT_NUMBER. The production sync uses P_TAKE=-1; this collection defaults to 1 to avoid downloading the full window during inspection.",
+      "item": [
+        {
+          "name": "Projects - one date selector",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json, */*",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json; charset=UTF-8",
+                "type": "text"
+              },
+              {
+                "key": "Origin",
+                "value": "https://dubailand.gov.ae",
+                "type": "text"
+              },
+              {
+                "key": "Referer",
+                "value": "https://dubailand.gov.ae/",
+                "type": "text"
+              },
+              {
+                "key": "AppUser",
+                "value": "",
+                "type": "text"
+              },
+              {
+                "key": "consumer-id",
+                "value": "{{consumerId}}",
+                "type": "text"
+              },
+              {
+                "key": "User-Agent",
+                "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"P_FROM_DATE\": \"{{projectFromDate}}\",\n  \"P_TO_DATE\": \"{{projectToDate}}\",\n  \"P_DATE_TYPE\": \"{{projectDateType}}\",\n  \"P_PRJ_TYPE_ID\": \"\",\n  \"P_PRJ_STATUS\": \"\",\n  \"P_ZONE_ID\": \"\",\n  \"P_AREA_ID\": \"\",\n  \"P_TAKE\": \"{{projectTake}}\",\n  \"P_SKIP\": \"\",\n  \"P_SORT\": \"PROJECT_NUMBER_ASC\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/open-data/projects",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "open-data",
+                "projects"
+              ]
+            },
+            "description": "USED FOUR TIMES PER PROJECT SYNC. P_DATE_TYPE: 1=start, 2=end, 3=adoption/registration, 4=completion. Dates must be MM/DD/YYYY. An empty or placeholder body returns an error."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('DLD project envelope is valid', () => {",
+                  "  pm.expect(body.responseCode).to.equal(200);",
+                  "  pm.expect(body.validationErrorsList || []).to.be.an('array').that.is.empty;",
+                  "  pm.expect(body.response).to.be.an('object');",
+                  "  pm.expect(body.response.result).to.be.an('array');",
+                  "});",
+                  "pm.test('Project row exposes the full documented shape', () => {",
+                  "  if (!body.response.result.length) return;",
+                  "  pm.expect(body.response.result[0]).to.include.keys('PROJECT_NUMBER','PROJECT_EN','PROJECT_AR','DEVELOPER_NUMBER','DEVELOPER_EN','DEVELOPER_AR','START_DATE','END_DATE','ADOPTION_DATE','PRJ_TYPE_EN','PROJECT_VALUE','ESCROW_ACCOUNT_NUMBER','PROJECT_STATUS','PERCENT_COMPLETED','INSPECTION_DATE','COMPLETION_DATE','DESCRIPTION_EN','AREA_EN','ZONE_EN','CNT_LAND','CNT_BUILDING','CNT_VILLA','CNT_UNIT','CNT_TOTAL','MASTER_PROJECT_EN');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "Live example - 200 OK - start-date selector - 2026-07-28",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json, */*",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json; charset=UTF-8",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Origin",
+                    "value": "https://dubailand.gov.ae",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Referer",
+                    "value": "https://dubailand.gov.ae/",
+                    "type": "text"
+                  },
+                  {
+                    "key": "AppUser",
+                    "value": "",
+                    "type": "text"
+                  },
+                  {
+                    "key": "consumer-id",
+                    "value": "{{consumerId}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "User-Agent",
+                    "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"P_FROM_DATE\": \"01/01/2026\",\n  \"P_TO_DATE\": \"12/31/2026\",\n  \"P_DATE_TYPE\": \"1\",\n  \"P_PRJ_TYPE_ID\": \"\",\n  \"P_PRJ_STATUS\": \"\",\n  \"P_ZONE_ID\": \"\",\n  \"P_AREA_ID\": \"\",\n  \"P_TAKE\": \"1\",\n  \"P_SKIP\": \"0\",\n  \"P_SORT\": \"PROJECT_NUMBER_ASC\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/open-data/projects",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "open-data",
+                    "projects"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timeStamp\": \"2026-07-28T17:09:56.0721916+04:00\",\n  \"responseCode\": 200,\n  \"validationErrorsList\": [],\n  \"response\": {\n    \"result\": [\n      {\n        \"RN\": 1,\n        \"TOTAL\": 359,\n        \"DEFAULT_SORT\": \"DEFAULT\",\n        \"PROJECT_NUMBER\": 3189,\n        \"PROJECT_EN\": \"Verdes by Haven 2\",\n        \"PROJECT_AR\": \"فيرديس من جنان 2\",\n        \"DEVELOPER_NUMBER\": 1658,\n        \"DEVELOPER_EN\": \"AURORA SPV 1 L.L.C\",\n        \"DEVELOPER_AR\": \"أرورا اس بي في 1 ش.ذ.م.م\",\n        \"START_DATE\": \"2026-01-01T00:00:00\",\n        \"END_DATE\": \"2028-06-30T00:00:00\",\n        \"ADOPTION_DATE\": \"2024-09-10T15:28:19\",\n        \"PRJ_TYPE_EN\": \"Normal\",\n        \"PRJ_TYPE_AR\": \"عادي\",\n        \"PROJECT_VALUE\": 65143300,\n        \"ESCROW_ACCOUNT_NUMBER\": \"4031225788862016\",\n        \"PROJECT_STATUS\": \"ACTIVE\",\n        \"PERCENT_COMPLETED\": 15.25,\n        \"INSPECTION_DATE\": \"2026-07-08T10:58:05\",\n        \"COMPLETION_DATE\": \"2028-07-04T00:00:00\",\n        \"DESCRIPTION_EN\": \"Building 7: ground + 4 floors + roof, with 59 residential units and no commercial units.\",\n        \"DESCRIPTION_AR\": \"المشروع يتكون من مبنى سكني يضم 59 وحدة.\",\n        \"AREA_EN\": \"Wadi Al Safa 5\",\n        \"AREA_AR\": \"وادي الصفا 5\",\n        \"ZONE_EN\": \"Dubai Development Authority (DDA)\",\n        \"ZONE_AR\": \"سلطة دبي للتطوير\",\n        \"CNT_LAND\": 0,\n        \"CNT_BUILDING\": 0,\n        \"CNT_VILLA\": 0,\n        \"CNT_UNIT\": 59,\n        \"CNT_TOTAL\": 59,\n        \"MASTER_PROJECT_EN\": null,\n        \"MASTER_PROJECT_AR\": null\n      }\n    ],\n    \"additionalData\": null\n  }\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
