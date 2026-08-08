@@ -471,6 +471,135 @@ export function projectOrderBy(
   ];
 }
 
+export interface TransactionFilters {
+  q?: string;
+  groupId?: number;
+  area?: string;
+  propType?: string;
+  propSubType?: string;
+  usage?: string;
+  project?: string;
+  rooms?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+  minValue?: number;
+  maxValue?: number;
+  isOffplan: TriState;
+  isFreeHold: TriState;
+  sourceMonth?: string;
+  sort: string;
+  dir: "asc" | "desc";
+  page: number;
+  pageSize: number;
+}
+
+export const TRANSACTION_SORTS = {
+  instanceDate: "instanceDate",
+  transValueAed: "transValueAed",
+  actualArea: "actualArea",
+  areaEn: "areaEn",
+  transactionNumber: "transactionNumber",
+} as const;
+
+const NULLABLE_TRANSACTION_SORTS = new Set([
+  "instanceDate",
+  "transValueAed",
+  "actualArea",
+  "areaEn",
+]);
+
+export function parseTransactionFilters(sp: URLSearchParams): TransactionFilters {
+  const sort = sp.get("sort") ?? "instanceDate";
+  const group = int(sp.get("groupId"));
+  return {
+    q: sp.get("q")?.trim() || undefined,
+    groupId: group && group >= 1 && group <= 3 ? group : undefined,
+    area: sp.get("area") || undefined,
+    propType: sp.get("propType") || undefined,
+    propSubType: sp.get("propSubType") || undefined,
+    usage: sp.get("usage") || undefined,
+    project: sp.get("project")?.trim() || undefined,
+    rooms: sp.get("rooms") || undefined,
+    dateFrom: date(sp.get("dateFrom")),
+    dateTo: endOfDay(sp.get("dateTo")),
+    minValue: number(sp.get("minValue")),
+    maxValue: number(sp.get("maxValue")),
+    isOffplan: tri(sp.get("isOffplan")),
+    isFreeHold: tri(sp.get("isFreeHold")),
+    sourceMonth: /^\d{4}-\d{2}$/.test(sp.get("sourceMonth") ?? "")
+      ? sp.get("sourceMonth")!
+      : undefined,
+    sort: sort in TRANSACTION_SORTS ? sort : "instanceDate",
+    dir: sp.get("dir") === "asc" ? "asc" : "desc",
+    page: Math.max(1, int(sp.get("page")) ?? 1),
+    pageSize: Math.min(500, Math.max(10, int(sp.get("pageSize")) ?? 50)),
+  };
+}
+
+export function transactionWhere(
+  f: TransactionFilters,
+): Prisma.TransactionWhereInput {
+  const and: Prisma.TransactionWhereInput[] = [];
+
+  if (f.q) {
+    and.push({
+      OR: [
+        { transactionNumber: { contains: f.q, mode: "insensitive" } },
+        { projectEn: { contains: f.q, mode: "insensitive" } },
+        { masterProjectEn: { contains: f.q, mode: "insensitive" } },
+        { areaEn: { contains: f.q, mode: "insensitive" } },
+        { procedureEn: { contains: f.q, mode: "insensitive" } },
+      ],
+    });
+  }
+
+  if (f.groupId) and.push({ groupId: f.groupId });
+  if (f.area) and.push({ areaEn: f.area });
+  if (f.propType) and.push({ propTypeEn: f.propType });
+  if (f.propSubType) and.push({ propSubTypeEn: f.propSubType });
+  if (f.usage) and.push({ usageEn: f.usage });
+  if (f.rooms) and.push({ roomsEn: f.rooms });
+  if (f.project) and.push({ projectEn: { contains: f.project, mode: "insensitive" } });
+  if (f.sourceMonth) and.push({ sourceMonth: f.sourceMonth });
+
+  if (f.dateFrom || f.dateTo) {
+    and.push({
+      instanceDate: {
+        ...(f.dateFrom ? { gte: f.dateFrom } : {}),
+        ...(f.dateTo ? { lte: f.dateTo } : {}),
+      },
+    });
+  }
+
+  if (f.minValue != null || f.maxValue != null) {
+    and.push({
+      transValueAed: {
+        ...(f.minValue != null ? { gte: f.minValue } : {}),
+        ...(f.maxValue != null ? { lte: f.maxValue } : {}),
+      },
+    });
+  }
+
+  if (f.isOffplan !== "any") and.push({ isOffplan: f.isOffplan === "yes" });
+  if (f.isFreeHold !== "any") and.push({ isFreeHold: f.isFreeHold === "yes" });
+
+  return and.length ? { AND: and } : {};
+}
+
+export function transactionOrderBy(
+  f: TransactionFilters,
+): Prisma.TransactionOrderByWithRelationInput[] {
+  const column =
+    TRANSACTION_SORTS[f.sort as keyof typeof TRANSACTION_SORTS] ?? "instanceDate";
+  const primary = NULLABLE_TRANSACTION_SORTS.has(column)
+    ? { [column]: { sort: f.dir, nulls: "last" } }
+    : { [column]: f.dir };
+  return [
+    primary as Prisma.TransactionOrderByWithRelationInput,
+    { transactionNumber: "asc" },
+  ];
+}
+
 /** Rebuild a query string, dropping empties so URLs stay readable. */
 export function buildQuery(
   base: URLSearchParams | Record<string, string | number | undefined | null>,

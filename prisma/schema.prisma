@@ -428,6 +428,617 @@ model ProjectSyncRun {
 }
 
 // ---------------------------------------------------------------------------
+// DLD open-data transactions (sales, mortgages, gifts).
+//
+// POST /open-data/transactions, same envelope as projects but a different
+// parameter set. Quirks, all established by probing the live API:
+//
+//   - The parameter list is exactly:
+//       P_FROM_DATE P_TO_DATE P_GROUP_ID P_IS_OFFPLAN P_IS_FREE_HOLD
+//       P_AREA_ID P_USAGE_ID P_PROP_TYPE_ID P_TAKE P_SKIP P_SORT
+//     Note P_PROP_TYPE_ID, *not* P_PROPERTY_TYPE_ID. Sending an unknown key,
+//     or omitting one of these, returns responseCode 420 INVALID_REQUEST.
+//   - P_TAKE / P_SKIP must be *strings*. Numbers bind but fail validation;
+//     passing "" for an int filter crashes the upstream with an HTML 500.
+//   - Dates are MM/DD/YYYY. The public form collects DD/MM/YYYY and converts.
+//   - Both dates are mandatory - there is no "everything" call.
+//
+// IMPORTANT: this dataset has NO broker, agent, office or company attribution.
+// The full field list is mirrored below; none of it identifies who brokered a
+// deal. Transactions therefore CANNOT be joined to Office or Broker, and
+// "how much has brokerage X sold" is not answerable from DLD open data. Do not
+// add a relation to Office here - there is no key to build it on.
+//
+// EQUALLY IMPORTANT - multi-unit transactions and TRANS_VALUE:
+//
+// One transactionNumber can span many units. The gateway emits one row per
+// unit, and each row repeats the *whole deal's* value in TRANS_VALUE. July 2026
+// alone has 45 such transactions covering 429 extra rows, the largest spanning
+// 12 units. Rows within a group differ only by unit detail (area, rooms,
+// parking), and some are byte-identical to each other.
+//
+// So:
+//   - SUM(transValueAed) over rows OVER-COUNTS. A 12-unit deal worth AED 1.48m
+//     contributes AED 17.7m. Always aggregate value over DISTINCT
+//     (transactionNumber, instanceDate, transValueAed) - see lib/analytics.
+//   - COUNT(*) counts units, not deals. Count distinct transactionNumber +
+//     instanceDate for deal counts.
+//   - No subset of source fields identifies a row uniquely, which is why rows
+//     carry a surrogate id and each month is replaced wholesale on sync rather
+//     than upserted. See lib/dld/transactions-sync.ts.
+// ---------------------------------------------------------------------------
+
+model Transaction {
+  /// Surrogate. The source has no row-unique natural key: byte-identical rows
+  /// occur within multi-unit transactions, so any content-derived id would
+  /// silently collapse real units. Rows are replaced per month, not upserted.
+  id String @id @default(cuid())
+
+  /// DLD's own reference, e.g. "101-2-2026" (<serial>-<group>-<year>).
+  transactionNumber String
+  instanceDate      DateTime? @db.Timestamptz(3)
+
+  /// 1=Sales, 2=Mortgages, 3=Gifts.
+  groupId   Int?
+  groupEn   String?
+  groupAr   String?
+  procedureId Int?
+  procedureEn String?
+  procedureAr String?
+
+  isOffplan     Boolean?
+  isOffplanEn   String?
+  isFreeHold    Boolean?
+  isFreeHoldEn  String?
+
+  usageId Int?
+  usageEn String?
+  usageAr String?
+
+  areaId Int?
+  areaEn String?
+  areaAr String?
+
+  propertyId        Int?
+  parcelId          String?
+  propertyTypeId    Int?
+  propTypeEn        String?
+  propTypeAr        String?
+  propertySubTypeId Int?
+  propSubTypeEn     String?
+  propSubTypeAr     String?
+
+  /// Headline consideration in AED.
+  transValueAed Decimal? @db.Decimal(20, 2)
+  /// Area the procedure covers vs the property's own area, both sq.m.
+  procedureArea Decimal? @db.Decimal(14, 2)
+  actualArea    Decimal? @db.Decimal(14, 2)
+
+  roomsEn     String?
+  roomsAr     String?
+  parking     String?
+  buildingAge Int?
+
+  projectEn       String?
+  projectAr       String?
+  masterProjectEn String?
+  masterProjectAr String?
+
+  nearestMetroEn    String?
+  nearestMallEn     String?
+  nearestLandmarkEn String?
+
+  totalBuyer  Int @default(0)
+  totalSeller Int @default(0)
+
+  /// Rows sharing this row's transactionNumber + instanceDate. 1 for the vast
+  /// majority; up to 12 in July 2026.
+  unitCount Int @default(1)
+  /// Distinct transValueAed values within this deal. Almost always 1. Above 1
+  /// means the source published several monetary legs for one transaction -
+  /// in practice "Lease to Own Registration", where the property price and the
+  /// financed portion are separate rows (e.g. AED 650,000 and AED 422,500 for
+  /// the same 38 m² flat). 112 deals across May-July 2026.
+  ///
+  /// There is no source field marking which leg is the headline consideration,
+  /// so `isPrimaryUnit` picks the largest. Filter on this column when that
+  /// assumption matters to an analysis.
+  dealValueVariants Int @default(1)
+  /// True on exactly one row per deal - the one carrying the highest value.
+  /// Computed at sync time so value and deal-count aggregates are a plain
+  /// indexed WHERE rather than a SELECT DISTINCT every consumer must remember:
+  ///   deals  = count(where isPrimaryUnit)
+  ///   value  = sum(transValueAed where isPrimaryUnit)
+  ///   units  = count(*)
+  /// Aggregating value without this filter over-counts every multi-unit deal.
+  isPrimaryUnit Boolean @default(true)
+
+  /// Calendar month window (YYYY-MM) this row was fetched under. The endpoint
+  /// only answers date-bounded queries, so coverage is tracked per month and
+  /// a re-sync replaces the month wholesale.
+  sourceMonth String
+  /// sha256 of the row's stable content. Not unique - see the header note on
+  /// multi-unit transactions - but lets a re-sync report what actually moved.
+  sourceHash  String
+  rawSource   Json
+
+  syncedAt  DateTime @default(now()) @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([transactionNumber])
+  @@index([instanceDate])
+  @@index([groupId])
+  @@index([areaEn])
+  @@index([propTypeEn])
+  @@index([projectEn])
+  @@index([transValueAed])
+  @@index([sourceMonth])
+  @@index([isOffplan])
+  @@index([isPrimaryUnit])
+  @@index([isPrimaryUnit, instanceDate])
+  @@map("transactions")
+}
+
+model TransactionSyncRun {
+  id String @id @default(cuid())
+  /// MANUAL | SCHEDULED | API
+  trigger String @default("MANUAL")
+  /// RUNNING | SUCCESS | FAILED
+  status String @default("RUNNING")
+
+  /// Inclusive YYYY-MM window this run covered.
+  fromMonth String
+  toMonth   String
+
+  startedAt  DateTime  @default(now()) @db.Timestamptz(3)
+  finishedAt DateTime? @db.Timestamptz(3)
+  durationMs Int?
+
+  /// Rows written (units), and the deal count they collapse to.
+  transactionsSeen    Int @default(0)
+  transactionsNew     Int @default(0)
+  transactionsUpdated Int @default(0)
+  /// Distinct transactionNumber + instanceDate pairs across the window.
+  dealsSeen           Int @default(0)
+  requestCount        Int @default(0)
+  errorCount          Int @default(0)
+  error               String?
+  log                 Json?
+
+  @@index([startedAt])
+  @@index([status])
+  @@map("transaction_sync_runs")
+}
+
+// ---------------------------------------------------------------------------
+// The rest of the DLD open-data catalogue.
+//
+// Nine commands share one envelope; see lib/dld/open-data.ts for the transport
+// and its quirks. Volumes and fetch strategy, measured 2026-08-07:
+//
+//   rents       95,365 / month   monthly single-shot
+//   lands      260,730 total     paged (page overlap verified zero)
+//   buildings    9,845 total     single-shot, blank dates = whole catalogue
+//   brokers     42,997 total     single-shot, 22.4MB in 16.5s
+//   developers     182 total     single-shot, needs a wide date window
+//   valuations     470 / month   monthly single-shot
+//   units            0           answers 200 but returns nothing, every filter
+//
+// JOINING THESE IS NOT DONE ON IDs. The gateway zeroes most identifier columns
+// - AREA_ID, PROPERTY_ID, USAGE_ID, PROPERTY_TYPE_ID and friends all come back
+// as 0 in the data rows even though the lookup dictionaries carry real values.
+// The keys that survive, and are therefore the only safe join columns, are:
+//
+//   areaEn / projectEn / masterProjectEn   names, not ids
+//   parcelId, landNumber                   land + building + rent + transaction
+//   projectNumber                          land + building -> Project
+//   developerNumber                        Developer -> Project.developerNumber
+//   brokerNumber                           OpenDataBroker -> Broker.cardNumber
+//   contractNumber, transactionNumber      within their own dataset
+//
+// Every model below keeps `rawSource` so a mapping we have not thought of yet
+// can be recovered without a re-crawl.
+// ---------------------------------------------------------------------------
+
+/// Ejari rental contracts. One row per contract version - a renewal is a new
+/// row sharing contractNumber with a higher versionNumber.
+model Rent {
+  id String @id @default(cuid())
+
+  contractNumber String?
+  versionNumber  Int?
+  versionEn      String?
+
+  registrationDate DateTime? @db.Timestamptz(3)
+  startDate        DateTime? @db.Timestamptz(3)
+  endDate          DateTime? @db.Timestamptz(3)
+
+  /// Whole-term consideration vs the annualised figure. Compare `annualAmount`
+  /// against transaction values for yield work; `contractAmount` covers a
+  /// multi-year term and is not directly comparable.
+  contractAmountAed Decimal? @db.Decimal(20, 2)
+  annualAmountAed   Decimal? @db.Decimal(20, 2)
+
+  areaEn String?
+  areaAr String?
+
+  propTypeEn    String?
+  propSubTypeEn String?
+  usageEn       String?
+  rooms         String?
+  parking       String?
+  actualArea    Decimal? @db.Decimal(14, 2)
+
+  isFreeHold   Boolean?
+  isFreeHoldEn String?
+
+  projectEn       String?
+  masterProjectEn String?
+
+  nearestMetroEn    String?
+  nearestMallEn     String?
+  nearestLandmarkEn String?
+
+  /// Property-side keys. propertyId is usually zeroed; parcelId is not.
+  propertyId     Int?
+  parcelId       String?
+  landPropertyId Int?
+  /// Properties covered by this contract - >1 means a portfolio lease.
+  totalProperties Int @default(1)
+
+  sourceMonth String
+  sourceHash  String
+  rawSource   Json
+
+  syncedAt  DateTime @default(now()) @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([contractNumber])
+  @@index([registrationDate])
+  @@index([startDate])
+  @@index([areaEn])
+  @@index([projectEn])
+  @@index([parcelId])
+  @@index([annualAmountAed])
+  @@index([sourceMonth])
+  @@index([propSubTypeEn])
+  @@map("rents")
+}
+
+/// The land parcel register. Static catalogue, re-pulled whole.
+model Land {
+  id String @id @default(cuid())
+
+  /// Municipality parcel identifier. The most reliable cross-dataset key.
+  parcelId       String?
+  landNumber     String?
+  landSubNumber  Int?
+  municipalityNumber String?
+  dmZipCode      String?
+
+  projectNumber   String?
+  projectEn       String?
+  masterProjectEn String?
+
+  landTypeEn    String?
+  propSubTypeEn String?
+  areaEn        String?
+  areaAr        String?
+  zoneEn        String?
+
+  actualArea Decimal? @db.Decimal(16, 2)
+
+  isFreeHold   Boolean?
+  isOffplanEn  String?
+  isRegistered Boolean?
+
+  preRegistrationNumber String?
+  separatedFrom         String?
+
+  sourceHash String
+  rawSource  Json
+
+  syncedAt  DateTime @default(now()) @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([parcelId])
+  @@index([landNumber])
+  @@index([projectNumber])
+  @@index([projectEn])
+  @@index([areaEn])
+  @@index([zoneEn])
+  @@index([landTypeEn])
+  @@map("lands")
+}
+
+/// The building register: physical stock, with unit and amenity counts.
+model Building {
+  id String @id @default(cuid())
+
+  buildingNumber String?
+  parcelId       String?
+  landNumber     String?
+  landSubNumber  Int?
+
+  projectNumber   String?
+  projectEn       String?
+  masterProjectEn String?
+
+  areaEn String?
+  zoneEn String?
+
+  propSubTypeEn String?
+  landTypeEn    String?
+
+  /// Composition. These are what make the building register useful: they say
+  /// how much sellable stock a project actually contains.
+  floors        Int?
+  buildingLevels Int?
+  flats         Int?
+  shops         Int?
+  offices       Int?
+  rooms         Int?
+  carParks      Int?
+  elevators     Int?
+  swimmingPools Int?
+
+  actualArea      Decimal? @db.Decimal(16, 2)
+  builtUpArea     Decimal? @db.Decimal(16, 2)
+  commonArea      Decimal? @db.Decimal(16, 2)
+  actualCommonArea Decimal? @db.Decimal(16, 2)
+
+  creationDate DateTime? @db.Timestamptz(3)
+
+  isFreeHold   Boolean?
+  isLeaseHold  Boolean?
+  isRegistered Boolean?
+  isOffplanEn  String?
+
+  preRegistrationNumber String?
+
+  sourceHash String
+  rawSource  Json
+
+  syncedAt  DateTime @default(now()) @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([buildingNumber])
+  @@index([parcelId])
+  @@index([projectNumber])
+  @@index([projectEn])
+  @@index([areaEn])
+  @@index([creationDate])
+  @@map("buildings")
+}
+
+/// Broker cards as published by open data.
+///
+/// Deliberately separate from `Broker`, which mirrors the registry `/brokers/`
+/// endpoint. This set is larger (42,997 vs ~34,000) because it RETAINS EXPIRED
+/// LICENCES - the registry drops a card the day it lapses. It is the only way
+/// to see a broker or firm after DLD delists them, so it is the basis for any
+/// churn or lapsed-licence analysis. Join to `Broker` on brokerNumber =
+/// cardNumber, and to `Office` on realEstateNumber.
+model OpenDataBroker {
+  brokerNumber String @id
+
+  nameEn   String?
+  nameAr   String?
+  genderEn String?
+
+  licenseStartDate DateTime? @db.Timestamptz(3)
+  licenseEndDate   DateTime? @db.Timestamptz(3)
+
+  phone   String?
+  fax     String?
+  webpage String?
+
+  realEstateNumber String?
+  officeNameEn     String?
+  officeNameAr     String?
+
+  /// True when licenseEndDate is in the past at sync time - i.e. this card is
+  /// in the open-data set but gone from the live registry.
+  isExpired Boolean @default(false)
+
+  sourceHash String
+  rawSource  Json
+
+  syncedAt  DateTime @default(now()) @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([realEstateNumber])
+  @@index([nameEn])
+  @@index([licenseEndDate])
+  @@index([isExpired])
+  @@map("od_brokers")
+}
+
+/// Registered developers. Joins to `Project.developerNumber`.
+model Developer {
+  developerNumber String @id
+
+  nameEn String?
+  nameAr String?
+
+  registrationDate  DateTime? @db.Timestamptz(3)
+  licenseNumber     String?
+  licenseIssueDate  DateTime? @db.Timestamptz(3)
+  licenseExpiryDate DateTime? @db.Timestamptz(3)
+  licenseSourceEn   String?
+  licenseTypeEn     String?
+  legalStatusEn     String?
+
+  chamberOfCommerceNo String?
+  phone   String?
+  fax     String?
+  webpage String?
+
+  sourceHash String
+  rawSource  Json
+
+  syncedAt  DateTime @default(now()) @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([nameEn])
+  @@index([registrationDate])
+  @@index([licenseExpiryDate])
+  @@map("developers")
+}
+
+/// DLD valuation procedures - an official worth assessment, distinct from a
+/// sale price. Useful as a market-rate benchmark against transaction values.
+model Valuation {
+  id String @id @default(cuid())
+
+  procedureYear   Int?
+  procedureNumber String?
+  instanceDate    DateTime? @db.Timestamptz(3)
+
+  propertyId Int?
+
+  propertyTypeEn String?
+  propSubTypeEn  String?
+  areaEn         String?
+  areaAr         String?
+
+  actualArea    Decimal? @db.Decimal(16, 2)
+  procedureArea Decimal? @db.Decimal(16, 2)
+
+  actualWorthAed        Decimal? @db.Decimal(20, 2)
+  propertyTotalValueAed Decimal? @db.Decimal(20, 2)
+
+  rowStatusCode String?
+
+  sourceMonth String
+  sourceHash  String
+  rawSource   Json
+
+  syncedAt  DateTime @default(now()) @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([procedureYear, procedureNumber])
+  @@index([instanceDate])
+  @@index([areaEn])
+  @@index([propertyTypeEn])
+  @@index([sourceMonth])
+  @@map("valuations")
+}
+
+/// Unit register. The endpoint answers 200 with an empty result under every
+/// filter combination tried on 2026-08-07, so this table may stay empty; it
+/// exists so a sync starts storing the moment DLD populates the dataset.
+model Unit {
+  id String @id @default(cuid())
+
+  parcelId   String?
+  areaEn     String?
+  zoneEn     String?
+  projectEn  String?
+
+  propSubTypeEn String?
+  actualArea    Decimal? @db.Decimal(16, 2)
+
+  isFreeHold  Boolean?
+  isLeaseHold Boolean?
+  isOffplanEn String?
+
+  sourceHash String
+  rawSource  Json
+
+  syncedAt  DateTime @default(now()) @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([parcelId])
+  @@index([areaEn])
+  @@index([projectEn])
+  @@map("units")
+}
+
+// ---- lookup dictionaries -------------------------------------------------
+// These carry the real ids the data rows have zeroed out. They cannot repair
+// a row's masked AREA_ID, but they do give the canonical name list to
+// normalise `areaEn` spellings against, and `projects-lookup` enumerates 4,162
+// projects against the 815 the year-windowed project sync stores.
+
+model AreaLookup {
+  areaId String @id
+  nameEn String?
+  nameAr String?
+  syncedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([nameEn])
+  @@map("lookup_areas")
+}
+
+model ProjectLookup {
+  projectId String @id
+  nameEn String?
+  nameAr String?
+  syncedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([nameEn])
+  @@map("lookup_projects")
+}
+
+model EjariPropertyType {
+  typeId String @id
+  nameEn String?
+  nameAr String?
+  syncedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("lookup_ejari_property_types")
+}
+
+/// One run of any open-data dataset sync. Replaces per-dataset run tables so
+/// the sync page has a single history to render.
+model OpenDataSyncRun {
+  id String @id @default(cuid())
+  /// transactions | rents | lands | buildings | units | brokers | developers |
+  /// valuations | lookups
+  dataset String
+  /// MANUAL | SCHEDULED | API
+  trigger String @default("MANUAL")
+  /// RUNNING | SUCCESS | FAILED | PARTIAL
+  status  String @default("RUNNING")
+
+  /// Inclusive YYYY-MM window, null for datasets with no date dimension.
+  fromMonth String?
+  toMonth   String?
+
+  startedAt  DateTime  @default(now()) @db.Timestamptz(3)
+  finishedAt DateTime? @db.Timestamptz(3)
+  durationMs Int?
+
+  rowsSeen    Int @default(0)
+  rowsWritten Int @default(0)
+  rowsNew     Int @default(0)
+  rowsRemoved Int @default(0)
+  /// What the gateway said the window contained, for reconciliation.
+  reportedTotal Int @default(0)
+
+  requestCount Int @default(0)
+  retryCount   Int @default(0)
+  errorCount   Int @default(0)
+  bytesFetched BigInt @default(0)
+  error        String?
+  log          Json?
+
+  @@index([dataset, startedAt])
+  @@index([status])
+  @@index([startedAt])
+  @@map("open_data_sync_runs")
+}
+
+// ---------------------------------------------------------------------------
 // CRM: batching, targets and the Notion mirror.
 //
 // Postgres is the system of record for everything the registry tells us and for

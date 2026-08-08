@@ -8,8 +8,11 @@ import {
   parseBrokerFilters,
   parseOfficeFilters,
   parseProjectFilters,
+  parseTransactionFilters,
   projectOrderBy,
   projectWhere,
+  transactionOrderBy,
+  transactionWhere,
 } from "@/lib/filters";
 
 export const dynamic = "force-dynamic";
@@ -109,11 +112,41 @@ const PROJECT_COLUMNS: Array<[string, string]> = [
   ["lastSeenAt", "Last Seen"],
 ];
 
+const TRANSACTION_COLUMNS: Array<[string, string]> = [
+  ["transactionNumber", "Transaction No"],
+  ["instanceDate", "Date"],
+  ["groupEn", "Type"],
+  ["procedureEn", "Procedure"],
+  ["isOffplanEn", "Registration"],
+  ["isFreeHoldEn", "Free Hold"],
+  ["usageEn", "Usage"],
+  ["areaEn", "Area"],
+  ["propTypeEn", "Property Type"],
+  ["propSubTypeEn", "Property Sub Type"],
+  ["transValueAed", "Amount (AED)"],
+  ["isPrimaryUnit", "Deal Value Row"],
+  ["unitCount", "Units In Deal"],
+  ["procedureArea", "Transaction Size (sq.m)"],
+  ["actualArea", "Property Size (sq.m)"],
+  ["roomsEn", "Rooms"],
+  ["parking", "Parking"],
+  ["totalBuyer", "No. of Buyer"],
+  ["totalSeller", "No. of Seller"],
+  ["masterProjectEn", "Master Project"],
+  ["projectEn", "Project"],
+  ["nearestMetroEn", "Nearest Metro"],
+  ["nearestMallEn", "Nearest Mall"],
+  ["nearestLandmarkEn", "Nearest Landmark"],
+  ["sourceMonth", "Source Month"],
+];
+
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const requestedType = sp.get("type");
   const type =
-    requestedType === "brokers" || requestedType === "projects"
+    requestedType === "brokers" ||
+    requestedType === "projects" ||
+    requestedType === "transactions"
       ? requestedType
       : "offices";
   const limit = Math.min(50_000, Number(sp.get("limit")) || 25_000);
@@ -169,6 +202,29 @@ export async function GET(request: NextRequest) {
       })),
     );
     filename = `dxb-brokers-${stamp}.csv`;
+  } else if (type === "transactions") {
+    const filters = parseTransactionFilters(sp);
+    const rows = await prisma.transaction.findMany({
+      where: transactionWhere(filters),
+      orderBy: transactionOrderBy(filters),
+      take: limit,
+    });
+
+    // One row per unit, as the gateway publishes it. "Deal Value Row" marks the
+    // single row per transaction whose amount may be summed - see the note on
+    // `Transaction` in the schema before aggregating this file.
+    csv = toCsv(
+      TRANSACTION_COLUMNS,
+      rows.map((row) => ({
+        ...row,
+        instanceDate: row.instanceDate?.toISOString().slice(0, 19).replace("T", " "),
+        transValueAed: row.transValueAed?.toString(),
+        procedureArea: row.procedureArea?.toString(),
+        actualArea: row.actualArea?.toString(),
+        isPrimaryUnit: row.isPrimaryUnit ? "yes" : "no",
+      })),
+    );
+    filename = `dxb-transactions-${stamp}.csv`;
   } else {
     const filters = parseProjectFilters(sp);
     const rows = await prisma.project.findMany({

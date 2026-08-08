@@ -20,6 +20,62 @@ projects endpoint uses the same value as a request header.
 | `/offices/`           | ~10,200      | Every licensed brokerage: licence dates, contact person, email, mobile, website, socials, WhatsApp, RERA rank, licensed activities |
 | `/brokers/`           | ~34,000      | Every broker card: name, card issue/expiry, direct email + mobile, and the firm they sit under |
 | `/open-data/projects` | 815 observed | Project identity, developer, area/zone, lifecycle dates, status, completion, value, escrow and unit counts for the selected date window |
+| `/open-data/transactions` | ~19k/month | Sales, mortgages and gifts: amount, area, property type, rooms, parking, project, nearest metro/mall/landmark |
+| `/open-data/rents` | ~95k/month | Ejari contracts: contract + annual amount, term, area, project, property type, rooms |
+| `/open-data/lands` | 260,730 | Parcel register: parcel id, land number, area, zone, project, land type, size |
+| `/open-data/buildings` | 9,845 | Building register with composition — flats, shops, offices, floors, lifts, parking |
+| `/open-data/brokers` | 42,997 | Broker cards **including expired licences** — the registry endpoint drops them |
+| `/open-data/developers` | 182 | Registered developers: licence number, dates, contact |
+| `/open-data/valuations` | ~470/month | Official DLD valuation procedures — assessed worth, not sale price |
+| `/open-data/units` | **0** | Answers 200 but returns nothing under every filter tried (2026-08-07) |
+
+Three lookup dictionaries feed the portal's dropdowns and are mirrored too:
+`carea-lookup` (437 areas), `projects-lookup` (**4,162** projects — five times what
+the year-windowed project sync stores) and `ejari-property-types` (83).
+
+### The gateway holds the current calendar year only
+
+This is a hard ceiling, not a tuning problem. Probed 2026-08-07:
+
+| Window | transactions | rents | valuations |
+| ------ | ------------ | ----- | ---------- |
+| 2026 | 136,741 | 667,364 | 3,051 |
+| 2025 | **0** | **0** | **0** |
+| 2024 and earlier | **0** | **0** | **0** |
+
+A multi-year window does not help — `01/01/2000 → 12/31/2026` returns exactly
+the same 136,741 rows as 2026 alone. There is no parameter that reaches further
+back; the portal itself says so, pointing at Dubai Pulse for previous years.
+
+**Everything historical lives on [Dubai Pulse](https://www.dubaipulse.gov.ae),
+which is a different system behind OAuth.** Every DLD dataset there returns
+`401 Unauthorized application request` without a token, and credentials are
+issued by email on registration — there is no anonymous access and nothing to
+reverse-engineer. Once an API Key and Secret exist, put them in `.env` and run
+`npx tsx scripts/pulse-discover.ts`, which authenticates and dumps each
+dataset's field list so an importer can be written against the real schema
+rather than a guess.
+
+So the mirror's realistic coverage is: **whole-catalogue datasets** (lands,
+buildings, brokers, developers, lookups) are complete regardless of date, while
+**windowed datasets** (transactions, rents, valuations) can only ever go back to
+1 January of the current year until Pulse access is in place.
+
+### Month windows lose ~0.5% against a year window
+
+Summing the gateway's own month totals for 2026 gives 136,025 transactions. Asking
+the same gateway for the whole year gives **136,741** — 716 more, 0.52%.
+
+The months tile the year exactly: single-day queries confirm both bounds are
+inclusive (`07/31 → 07/31` returns 624 rows), so there is no gap or overlap to
+explain it. Those 716 rows simply match no month window. This is a
+gateway-side inconsistency, not a sync defect — the mirror holds 100% of what
+month-windowed queries return, verified month by month.
+
+Left as-is deliberately. Closing it means fetching a whole year in one response
+(~140MB for transactions, far more for rents) and giving up the per-month
+`sourceMonth` partitioning that makes re-syncs cheap and idempotent. Worth
+revisiting only if that 0.5% ever matters.
 
 ### Quirks, all found by probing the live API
 
@@ -43,6 +99,128 @@ projects endpoint uses the same value as a request header.
   then deduplicate by project number. The first live import made four calls,
   received 1,100 rows and stored 815 unique projects. This is date-window
   coverage, not a claim that 815 is the full historical project registry.
+
+- **Transactions take a different parameter set to projects**, and are fussy
+  about it. The accepted keys are exactly `P_FROM_DATE P_TO_DATE P_GROUP_ID
+  P_IS_OFFPLAN P_IS_FREE_HOLD P_AREA_ID P_USAGE_ID P_PROP_TYPE_ID P_TAKE
+  P_SKIP P_SORT` — note `P_PROP_TYPE_ID`, *not* the `P_PROPERTY_TYPE_ID` the
+  response uses. Any unknown or missing key returns `responseCode 420
+  INVALID_REQUEST` naming nothing; passing `""` for one of the int filters
+  takes the upstream down with an HTML 500 instead of a JSON error. `P_TAKE`
+  and `P_SKIP` must be strings. Dates are `MM/DD/YYYY` and both are mandatory.
+
+---
+
+## Joining the open-data sets
+
+**The gateway zeroes most of its own identifier columns.** `AREA_ID`,
+`PROPERTY_ID`, `USAGE_ID`, `PROPERTY_TYPE_ID`, `PROCEDURE_ID` and friends all
+come back as `0` in the data rows, even though the lookup dictionaries carry
+real values. Joins therefore run on names and on the few keys that survive.
+
+Run `npx tsx scripts/mapping-report.ts` to re-measure any of this. Current
+match rates:
+
+| Join | Rate | Use it? |
+| ---- | ---- | ------- |
+| `transactions.areaEn` → area lookup | 100% | ✅ area is the backbone key |
+| `rents.areaEn` → area lookup | 100% | ✅ |
+| `transactions.projectEn` → projects-lookup | 100% of the 88% that name a project | ✅ 12% are secondary-market with no project |
+| `buildings.parcelId` → `lands.parcelId` | 100% | ✅ |
+| `transactions.parcelId` → `lands.parcelId` | 96.6% of the 35% that carry one | ⚠️ only a third of deals carry a parcel |
+| `od_brokers.realEstateNumber` → `offices` | 89.2% | ✅ |
+| `od_brokers.brokerNumber` → `brokers.cardNumber` | 80.5% | ✅ the 19.5% gap **is** the lapsed-licence population |
+| `lands.projectNumber` → `projects` | 13.9% | ❌ `projects` is year-windowed; widen it first |
+| `projects.developerNumber` → `developers` | 2.1% | ❌ the developer register only has 182 rows |
+| `rents.parcelId` → anything | **0%** | ❌ rents carry no parcel id at all |
+
+Two consequences worth internalising:
+
+- **Rents join to sales by area and project name only.** There is no parcel or
+  property key on a rent row, so rent-vs-sale work is area/project-level, never
+  unit-level.
+- **`lands.parcelId` is not unique** — one parcel carries many land records. Use
+  `EXISTS`, not a `LEFT JOIN`, when measuring coverage or you will count join
+  output instead of source rows.
+
+---
+
+## The yield atlas
+
+`/yield` is the first analysis built on the cross-dataset joins. It answers
+"what does a property in this area actually return", by pairing ready sales
+against Ejari leases.
+
+**Gross yield = median annual rent per m² ÷ median sale price per m².**
+
+Per square metre, because that is the only normaliser available: `rents.rooms`
+is null on 95.6% of contracts, and where present it is a bare `"3"` against the
+transactions vocabulary `"3 B/R"`. `actualArea` is populated on 100% of rows on
+both sides.
+
+Excluded, deliberately:
+
+- **Off-plan sales** — 71% of the sale market and not lettable. Including them
+  is the single biggest way to get this number wrong.
+- **Mortgages and gifts** — a loan is not a price.
+- Repeat unit rows of multi-unit transactions.
+- The top and bottom 5% of per-m² values in each area, which removes the AED 1
+  transfers and prepaid long leases DLD publishes.
+
+**`sizeSkew` is the column to watch.** It is median let m² ÷ median sold m². Far
+from 1.0 means the stock being let is not the stock being sold, so the ratio is
+meaningless however deep the sample. Business Bay *offices* score **0.09** —
+whole floors are sold while small suites are let — and are marked `low`
+confidence rather than reported as a 6.8% yield. Sample depth alone would have
+called that cell trustworthy; it is not.
+
+Measured on Jan–Jul 2026 sales and Jun–Jul 2026 leases, flats come out at a
+**5.39% median** across 12 usable areas — Burj Khalifa 6.02%, Business Bay
+5.97%, Palm Jumeirah 4.61%. Villas sit lower at 4.71%, as expected.
+
+One finding worth recording: new lets run only **~0.10pp** above renewals once
+measured per m², far less than the ~6.7% gap the raw medians suggest. The
+rent-cap effect is largely a unit-size composition difference, not a price one.
+
+---
+
+## Transactions: two traps worth knowing before you query
+
+**1. There is no broker attribution. At all.** The transaction dataset carries
+no broker, agent, office or company field — the full column list is mirrored on
+the `Transaction` model. "How much has brokerage X sold" is **not answerable**
+from DLD open data, and no join to `Office` or `Broker` is possible. Sources
+that appear to show per-agency volume (Property Finder, Bayut, Property Monitor)
+derive it from listing portals or paid feeds, not from this API.
+
+**2. Rows are units, not deals, and the value repeats on every one.** A
+multi-unit transaction publishes one row per unit, each repeating the *whole
+deal's* value. In July 2026, 45 transactions spanned 429 extra rows, the largest
+covering 12 units — so a naive `SUM(transValueAed)` turns one AED 1.48m deal
+into AED 17.7m. Measured across May–July 2026 the inflation is **3.43%, about
+AED 5.16bn**.
+
+The sync therefore stamps every row at write time:
+
+| Column | Meaning |
+| ------ | ------- |
+| `unitCount` | Rows sharing this deal |
+| `dealValueVariants` | Distinct values within the deal (>1 for lease-to-own, which publishes the price and the financed portion as separate rows — 112 deals in May–July) |
+| `isPrimaryUnit` | True on exactly one row per deal, the highest-valued one |
+
+So the correct aggregates are:
+
+```sql
+deals = count(*)            where "isPrimaryUnit"
+value = sum("transValueAed") where "isPrimaryUnit"
+units = count(*)                                  -- no filter
+```
+
+`/api/transactions`, the `/transactions` page and the CSV export all apply this
+already. The grouping is recomputed **globally** after a sync, never per month:
+DLD's month window filters on registration date while `instanceDate` can fall
+outside it, so one deal's rows can land in two `sourceMonth` batches. Marking
+primaries a month at a time gave 40 deals two primary rows each.
 
 ---
 
@@ -120,6 +298,12 @@ The first sync takes a few minutes and pulls the full registry.
 | `npm run sync:deep`        | Same, but reconciles rosters for **every** brokerage (~10k requests, run weekly) |
 | `npm run projects:sync`    | Import this calendar year's projects across all four DLD date selectors          |
 | `npm run projects:sync:scheduled` | Scheduled-mode project import with idempotent upserts                    |
+| `npm run transactions:sync` | Import the current month's transactions                                        |
+| `npx tsx scripts/sync-transactions.ts 2026-01 2026-07` | Import an inclusive month range (prefer this form — PowerShell eats the `--` npm needs to forward flags) |
+| `npx tsx scripts/sync-open-data.ts all` | Sync every open-data set + lookups; one failure does not stop the rest |
+| `npx tsx scripts/sync-open-data.ts rents 2026-05 2026-07` | One dataset, inclusive month range (windowed sets only) |
+| `npx tsx scripts/mapping-report.ts` | Measure cross-dataset join coverage and print a worked yield example |
+| `npx tsx scripts/pulse-discover.ts` | Authenticate to Dubai Pulse and dump each dataset's schema (needs `DUBAI_PULSE_KEY`/`SECRET`) |
 | `npm run schedule:install` | Register the registry, CRM and project jobs with Windows Task Scheduler           |
 | `npm run schedule:status`  | Show last / next run                                                            |
 | `npm run schedule:remove`  | Unregister both jobs                                                            |
@@ -184,6 +368,8 @@ Tune the weights in one SQL block; the whole registry rescores in a second.
 | `/brokerages`  | Full filterable table: date ranges, size, tier, rank, has-website/email/mobile, expiry |
 | `/brokers`     | Same for broker cards, with the renewal-vs-new distinction surfaced           |
 | `/projects`    | DLD projects with status, developer, geography, date/month/year, completion, value, unit and escrow filters |
+| `/transactions`| Sales / mortgages / gifts with area, type, usage, rooms, off-plan, freehold, value and date filters. Deal counts and value are measured per deal, not per unit row |
+| `/yield`       | Rental yield atlas — gross yield by area, joining sales to Ejari leases. Every row carries a confidence rating; see below |
 | `/leads`       | Five pre-built segments, each with its own pitch angle                        |
 | `/activity`    | Newly discovered rows, broker moves between firms, field-level change feed     |
 | `/sync`        | Run history, manual trigger, scheduling notes                                 |
@@ -205,6 +391,8 @@ straight to the CSV export.
 | `GET /api/projects`          | Paginated projects with the same rich filters as the UI      |
 | `GET /api/projects/[id]`     | One project with every stored DLD field and source metadata  |
 | `POST /api/projects/sync`    | Trigger the four-selector project import                     |
+| `GET /api/transactions`      | Paginated transactions. `total` counts unit rows; `deals` and every value figure are measured per deal |
+| `GET /api/yield`             | Yield atlas rows plus the methodology block, so a consumer cannot use the number without the caveats |
 | `GET /api/export?type=…`     | CSV of the current filter set                                |
 | `GET /api/sync`              | Recent run history                                           |
 | `POST /api/sync`             | Trigger a run (`x-sync-secret` header when `SYNC_SECRET` set) |

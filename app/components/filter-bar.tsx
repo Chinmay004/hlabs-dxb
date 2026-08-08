@@ -24,7 +24,7 @@ export function FilterBar({
 }: {
   fields: FieldDef[];
   presets?: Array<{ label: string; params: Record<string, string> }>;
-  exportType?: "offices" | "brokers" | "projects";
+  exportType?: "offices" | "brokers" | "projects" | "transactions";
 }) {
   const router = useRouter();
   const pathname = usePathname();
