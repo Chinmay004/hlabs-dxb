@@ -19,6 +19,7 @@ why a lead they contacted last week is back in the queue.
 | Pipeline stage, owner, notes, next action | **Notion** | Postgres (mirror) |
 | Targets (the goal numbers) | **Notion** | Postgres (mirror) |
 | Target actuals | **Postgres** | Notion (read-only to humans) |
+| Research state, contacts, outreach log | **Postgres** | `/crm` only — Notion never sees it |
 
 Postgres is authoritative for anything derived. Notion is authoritative for
 anything a human decides. Neither side is authoritative for everything, which is
@@ -253,3 +254,62 @@ To test delay handling, backdate a batch's `dueDate` and run
   `Stage` to `❌ Lost` instead.
 - **Do not** use `--push` as a routine sync. It skips the pull.
 - **Do not** widen `assertOwnership` to make an error go away.
+
+---
+
+## 10. The research layer (`/crm`)
+
+Implemented in [`lib/crm/research.ts`](../lib/crm/research.ts) (vocabulary),
+[`lib/crm/leads.ts`](../lib/crm/leads.ts) (writes) and `app/crm/`.
+
+### Why it is a second axis
+
+`Stage` answers *where is this deal*. It cannot also answer *has anyone looked
+this firm up*, and forcing it to do both is what made the most common research
+outcome unrecordable: a brokerage nobody has opened and one an intern spent
+twenty minutes on and found nothing were both `🆕 New Lead`. So the same dead
+firm was handed to the next person, and coverage could not be measured at all.
+
+`researchStatus` is therefore orthogonal to `status`. Neither derives from the
+other. **Do not collapse them**, and do not add research values to `STAGES`.
+
+`🚫 Nothing Found` is a first-class outcome, not a failure. It is the record
+that the work was done.
+
+### Ownership
+
+These fields are owned by **Postgres**, edited in `/crm`, and are in neither
+list in `mapping.ts` because Notion has no such properties. They must never
+enter a push payload. Every payload builder in `lib/notion/sync.ts` is an
+explicit object literal for exactly this reason — do not switch one to a spread
+of the Office row, which would sweep them in silently.
+
+### Invariants
+
+1. **Rollups are recomputed, never incremented.** `contactsFound`,
+   `outreachCount`, `lastOutreach*` and `nextFollowUpAt` are denormalised onto
+   Office so the queue can sort 10k rows without joining. `recomputeLeadRollups`
+   recounts from the children; an increment drifts the first time a request is
+   retried or a row is deleted.
+2. **The child write, the rollup and the log entry share one transaction.** A
+   contact that exists without bumping `contactsFound` makes the coverage
+   numbers lie.
+3. **`LeadActivity` is append-only.** It is the answer to "what did the intern
+   do today", which no amount of current-state inspection can reconstruct once
+   state has been overwritten. Never derive it, never rewrite it.
+4. **One `Outreach` row per attempt.** Outcomes are updated in place as a
+   prospect responds, but a second message is a second row — "messaged twice, no
+   reply" and "messaged once" are different facts, and reply rate depends on the
+   difference.
+5. **Auto-advance only ever leaves the two open states.** Adding a contact
+   promotes `⚪ Not Started`/`🔍 Researching` to Enriched or Partial. It must
+   never override an explicit `🚫 Nothing Found` or `⛔ Do Not Contact` — those
+   are human judgements.
+6. **`nextFollowUpAt` counts only open attempts.** Including closed ones would
+   pin a firm to the follow-up worklist forever after one "Not Interested".
+
+### Attribution
+
+There is no auth on this dashboard. The actor name comes from `localStorage` and
+is a label, not a credential — it is never treated as one server-side. If this
+tool ever leaves the internal network that has to change before anything else.

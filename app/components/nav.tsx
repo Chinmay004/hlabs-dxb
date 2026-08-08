@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/transactions", label: "Transactions" },
   { href: "/yield", label: "Yield" },
   { href: "/leads", label: "Leads" },
+  { href: "/crm", label: "CRM" },
   { href: "/activity", label: "Activity" },
   { href: "/sync", label: "Sync" },
 ];

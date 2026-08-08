@@ -65,32 +65,58 @@ model Office {
   // ---- our own observation window ----
   /// First sync in which this brokerage appeared. For anything registered after
   /// we went live this is effectively the discovery date.
-  firstSeenAt DateTime  @default(now()) @db.Timestamptz(3)
-  lastSeenAt  DateTime  @default(now()) @db.Timestamptz(3)
+  firstSeenAt   DateTime  @default(now()) @db.Timestamptz(3)
+  lastSeenAt    DateTime  @default(now()) @db.Timestamptz(3)
   /// False once the brokerage stops appearing in the registry (licence dropped).
-  isActive    Boolean   @default(true)
+  isActive      Boolean   @default(true)
   deactivatedAt DateTime? @db.Timestamptz(3)
 
-  leadScore Int     @default(0)
-  leadTier  String  @default("D")
+  leadScore Int    @default(0)
+  leadTier  String @default("D")
 
   // ---- CRM overlay ----
   // Owned by humans in Notion. The registry sync never writes these; the Notion
   // sync pulls them back. `status` holds the Notion Stage string verbatim so
   // there is exactly one pipeline vocabulary across the whole system.
-  status          String    @default("🆕 New Lead")
-  ownerNote       String?
-  contactedAt     DateTime? @db.Timestamptz(3)
-  ownerName       String?
-  ownerNotionId   String?
-  channel         String?
-  touchpoints     Int       @default(0)
-  nextAction      String?
-  nextActionDate  DateTime? @db.Timestamptz(3)
-  clientPotential String?
+  status           String    @default("🆕 New Lead")
+  ownerNote        String?
+  contactedAt      DateTime? @db.Timestamptz(3)
+  ownerName        String?
+  ownerNotionId    String?
+  channel          String?
+  touchpoints      Int       @default(0)
+  nextAction       String?
+  nextActionDate   DateTime? @db.Timestamptz(3)
+  clientPotential  String?
   servicesInterest Json?
-  lostReason      String?
-  dealValueAed    Int?
+  lostReason       String?
+  dealValueAed     Int?
+
+  // ---- research & outreach overlay ----
+  // Owned by this app, not by Notion. These are deliberately NOT in either list
+  // in lib/notion/mapping.ts and must never enter a push payload: Notion knows
+  // nothing about them, and the research workflow is worked here.
+  //
+  // `researchStatus` is orthogonal to `status` above. `status` is where the deal
+  // is; this is whether anyone has looked the firm up. Keeping them separate is
+  // what makes "searched and found nothing" recordable — see lib/crm/research.ts.
+  researchStatus String    @default("⚪ Not Started")
+  researchedAt   DateTime? @db.Timestamptz(3)
+  researchedBy   String?
+  researchNotes  String?
+
+  /// Who is working this firm. Null means it is in the unassigned pool.
+  assignedTo String?
+  assignedAt DateTime? @db.Timestamptz(3)
+
+  // Rollups recomputed from the child tables on every mutation. Denormalised so
+  // the queue can sort and filter 10k rows without joining three tables.
+  contactsFound       Int       @default(0)
+  outreachCount       Int       @default(0)
+  lastOutreachAt      DateTime? @db.Timestamptz(3)
+  lastOutreachChannel String?
+  lastOutreachOutcome String?
+  nextFollowUpAt      DateTime? @db.Timestamptz(3)
 
   // ---- batching ----
   batchId String?
@@ -106,8 +132,11 @@ model Office {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  brokers Broker[]
-  changes OfficeChange[]
+  brokers        Broker[]
+  changes        OfficeChange[]
+  contacts       LeadContact[]
+  outreach       Outreach[]
+  leadActivities LeadActivity[]
 
   @@index([issueDate])
   @@index([firstSeenAt])
@@ -118,6 +147,13 @@ model Office {
   @@index([nameEn])
   @@index([batchId])
   @@index([notionSyncedAt])
+  @@index([researchStatus])
+  @@index([assignedTo])
+  @@index([nextFollowUpAt])
+  /// The queue's default read: open research, best leads first.
+  @@index([researchStatus, leadScore])
+  /// "What is on my plate" — the per-intern worklist.
+  @@index([assignedTo, researchStatus])
   @@map("offices")
 }
 
@@ -143,12 +179,12 @@ model Broker {
   officeIssueDate  DateTime? @db.Timestamptz(3)
   officeExpiryDate DateTime? @db.Timestamptz(3)
 
-  photo       String?
-  cardRankId  Int?
-  cardRank    String?
+  photo        String?
+  cardRankId   Int?
+  cardRank     String?
   officeRankId Int?
-  officeRank  String?
-  awardsCount Int     @default(0)
+  officeRank   String?
+  awardsCount  Int     @default(0)
 
   /// True when this card's number was above the highest number the registry had
   /// ever shown us before the sync that first saw it - i.e. a first-time licence
@@ -252,11 +288,11 @@ model BrokerChange {
 }
 
 model SyncRun {
-  id     String  @id @default(cuid())
+  id      String @id @default(cuid())
   /// FULL | INCREMENTAL | BACKFILL
-  kind   String
+  kind    String
   /// RUNNING | SUCCESS | FAILED | PARTIAL
-  status String  @default("RUNNING")
+  status  String @default("RUNNING")
   /// MANUAL | SCHEDULED | API
   trigger String @default("MANUAL")
 
@@ -264,9 +300,9 @@ model SyncRun {
   finishedAt DateTime? @db.Timestamptz(3)
   durationMs Int?
 
-  officesSeen       Int @default(0)
-  officesNew        Int @default(0)
-  officesUpdated    Int @default(0)
+  officesSeen        Int @default(0)
+  officesNew         Int @default(0)
+  officesUpdated     Int @default(0)
   officesDeactivated Int @default(0)
 
   brokersSeen        Int @default(0)
@@ -274,8 +310,8 @@ model SyncRun {
   brokersUpdated     Int @default(0)
   brokersDeactivated Int @default(0)
 
-  requestCount Int @default(0)
-  errorCount   Int @default(0)
+  requestCount Int     @default(0)
+  errorCount   Int     @default(0)
   error        String?
   /// Free-form per-stage notes so a failed run is debuggable after the fact.
   log          Json?
@@ -294,19 +330,19 @@ model DailyStat {
   date DateTime @id @db.Date
 
   /// Brokerages whose RERA issue date is this day.
-  officesIssued Int @default(0)
+  officesIssued     Int @default(0)
   /// Brokerages our sync discovered on this day.
   officesDiscovered Int @default(0)
   officesExpiring   Int @default(0)
 
   /// Every broker card the registry stamped this day. Includes annual renewals,
   /// which on a typical day outnumber genuinely new brokers several times over.
-  brokerCardsIssued Int @default(0)
+  brokerCardsIssued   Int @default(0)
   /// Of those, cards whose number cleared our high-water mark - genuinely new
   /// brokers. Zero for every day before our first sync, by construction.
-  brokersNew        Int @default(0)
+  brokersNew          Int @default(0)
   /// Broker cards our sync saw for the first time this day.
-  brokersDiscovered Int @default(0)
+  brokersDiscovered   Int @default(0)
   brokerCardsExpiring Int @default(0)
 
   /// Brokerages issued this day that still have zero brokers on the books.
@@ -354,19 +390,19 @@ model Project {
   inspectionDate DateTime? @db.Timestamptz(3)
   completionDate DateTime? @db.Timestamptz(3)
 
-  projectTypeEn String?
-  projectTypeAr String?
-  projectValueAed Decimal? @db.Decimal(20, 2)
+  projectTypeEn       String?
+  projectTypeAr       String?
+  projectValueAed     Decimal? @db.Decimal(20, 2)
   escrowAccountNumber String?
-  status String?
-  percentCompleted Decimal? @db.Decimal(7, 2)
+  status              String?
+  percentCompleted    Decimal? @db.Decimal(7, 2)
 
-  descriptionEn String?
-  descriptionAr String?
-  areaEn String?
-  areaAr String?
-  zoneEn String?
-  zoneAr String?
+  descriptionEn   String?
+  descriptionAr   String?
+  areaEn          String?
+  areaAr          String?
+  zoneEn          String?
+  zoneAr          String?
   masterProjectEn String?
   masterProjectAr String?
 
@@ -379,9 +415,9 @@ model Project {
   /// 1=start, 2=end, 3=adoption, 4=completion. A row may contain several.
   dateMatchTypes Int[]
   /// Calendar year used in the four required gateway date-window calls.
-  sourceYear Int
-  sourceHash String
-  rawSource Json
+  sourceYear     Int
+  sourceHash     String
+  rawSource      Json
 
   firstSeenAt DateTime @default(now()) @db.Timestamptz(3)
   lastSeenAt  DateTime @default(now()) @db.Timestamptz(3)
@@ -403,22 +439,22 @@ model Project {
 }
 
 model ProjectSyncRun {
-  id String @id @default(cuid())
+  id         String @id @default(cuid())
   /// MANUAL | SCHEDULED | API
-  trigger String @default("MANUAL")
+  trigger    String @default("MANUAL")
   /// RUNNING | SUCCESS | FAILED
-  status String @default("RUNNING")
+  status     String @default("RUNNING")
   sourceYear Int
 
-  startedAt  DateTime @default(now()) @db.Timestamptz(3)
+  startedAt  DateTime  @default(now()) @db.Timestamptz(3)
   finishedAt DateTime? @db.Timestamptz(3)
   durationMs Int?
 
-  projectsSeen    Int @default(0)
-  projectsNew     Int @default(0)
-  projectsUpdated Int @default(0)
-  requestCount    Int @default(0)
-  errorCount      Int @default(0)
+  projectsSeen    Int     @default(0)
+  projectsNew     Int     @default(0)
+  projectsUpdated Int     @default(0)
+  requestCount    Int     @default(0)
+  errorCount      Int     @default(0)
   error           String?
   log             Json?
 
@@ -479,17 +515,17 @@ model Transaction {
   instanceDate      DateTime? @db.Timestamptz(3)
 
   /// 1=Sales, 2=Mortgages, 3=Gifts.
-  groupId   Int?
-  groupEn   String?
-  groupAr   String?
+  groupId     Int?
+  groupEn     String?
+  groupAr     String?
   procedureId Int?
   procedureEn String?
   procedureAr String?
 
-  isOffplan     Boolean?
-  isOffplanEn   String?
-  isFreeHold    Boolean?
-  isFreeHoldEn  String?
+  isOffplan    Boolean?
+  isOffplanEn  String?
+  isFreeHold   Boolean?
+  isFreeHoldEn String?
 
   usageId Int?
   usageEn String?
@@ -533,7 +569,7 @@ model Transaction {
 
   /// Rows sharing this row's transactionNumber + instanceDate. 1 for the vast
   /// majority; up to 12 in July 2026.
-  unitCount Int @default(1)
+  unitCount         Int     @default(1)
   /// Distinct transValueAed values within this deal. Almost always 1. Above 1
   /// means the source published several monetary legs for one transaction -
   /// in practice "Lease to Own Registration", where the property price and the
@@ -543,7 +579,7 @@ model Transaction {
   /// There is no source field marking which leg is the headline consideration,
   /// so `isPrimaryUnit` picks the largest. Filter on this column when that
   /// assumption matters to an analysis.
-  dealValueVariants Int @default(1)
+  dealValueVariants Int     @default(1)
   /// True on exactly one row per deal - the one carrying the highest value.
   /// Computed at sync time so value and deal-count aggregates are a plain
   /// indexed WHERE rather than a SELECT DISTINCT every consumer must remember:
@@ -551,7 +587,7 @@ model Transaction {
   ///   value  = sum(transValueAed where isPrimaryUnit)
   ///   units  = count(*)
   /// Aggregating value without this filter over-counts every multi-unit deal.
-  isPrimaryUnit Boolean @default(true)
+  isPrimaryUnit     Boolean @default(true)
 
   /// Calendar month window (YYYY-MM) this row was fetched under. The endpoint
   /// only answers date-bounded queries, so coverage is tracked per month and
@@ -581,11 +617,11 @@ model Transaction {
 }
 
 model TransactionSyncRun {
-  id String @id @default(cuid())
+  id      String @id @default(cuid())
   /// MANUAL | SCHEDULED | API
   trigger String @default("MANUAL")
   /// RUNNING | SUCCESS | FAILED
-  status String @default("RUNNING")
+  status  String @default("RUNNING")
 
   /// Inclusive YYYY-MM window this run covered.
   fromMonth String
@@ -596,13 +632,13 @@ model TransactionSyncRun {
   durationMs Int?
 
   /// Rows written (units), and the deal count they collapse to.
-  transactionsSeen    Int @default(0)
-  transactionsNew     Int @default(0)
-  transactionsUpdated Int @default(0)
+  transactionsSeen    Int     @default(0)
+  transactionsNew     Int     @default(0)
+  transactionsUpdated Int     @default(0)
   /// Distinct transactionNumber + instanceDate pairs across the window.
-  dealsSeen           Int @default(0)
-  requestCount        Int @default(0)
-  errorCount          Int @default(0)
+  dealsSeen           Int     @default(0)
+  requestCount        Int     @default(0)
+  errorCount          Int     @default(0)
   error               String?
   log                 Json?
 
@@ -681,11 +717,11 @@ model Rent {
   nearestLandmarkEn String?
 
   /// Property-side keys. propertyId is usually zeroed; parcelId is not.
-  propertyId     Int?
-  parcelId       String?
-  landPropertyId Int?
+  propertyId      Int?
+  parcelId        String?
+  landPropertyId  Int?
   /// Properties covered by this contract - >1 means a portfolio lease.
-  totalProperties Int @default(1)
+  totalProperties Int     @default(1)
 
   sourceMonth String
   sourceHash  String
@@ -712,11 +748,11 @@ model Land {
   id String @id @default(cuid())
 
   /// Municipality parcel identifier. The most reliable cross-dataset key.
-  parcelId       String?
-  landNumber     String?
-  landSubNumber  Int?
+  parcelId           String?
+  landNumber         String?
+  landSubNumber      Int?
   municipalityNumber String?
-  dmZipCode      String?
+  dmZipCode          String?
 
   projectNumber   String?
   projectEn       String?
@@ -775,19 +811,19 @@ model Building {
 
   /// Composition. These are what make the building register useful: they say
   /// how much sellable stock a project actually contains.
-  floors        Int?
+  floors         Int?
   buildingLevels Int?
-  flats         Int?
-  shops         Int?
-  offices       Int?
-  rooms         Int?
-  carParks      Int?
-  elevators     Int?
-  swimmingPools Int?
+  flats          Int?
+  shops          Int?
+  offices        Int?
+  rooms          Int?
+  carParks       Int?
+  elevators      Int?
+  swimmingPools  Int?
 
-  actualArea      Decimal? @db.Decimal(16, 2)
-  builtUpArea     Decimal? @db.Decimal(16, 2)
-  commonArea      Decimal? @db.Decimal(16, 2)
+  actualArea       Decimal? @db.Decimal(16, 2)
+  builtUpArea      Decimal? @db.Decimal(16, 2)
+  commonArea       Decimal? @db.Decimal(16, 2)
   actualCommonArea Decimal? @db.Decimal(16, 2)
 
   creationDate DateTime? @db.Timestamptz(3)
@@ -875,9 +911,9 @@ model Developer {
   legalStatusEn     String?
 
   chamberOfCommerceNo String?
-  phone   String?
-  fax     String?
-  webpage String?
+  phone               String?
+  fax                 String?
+  webpage             String?
 
   sourceHash String
   rawSource  Json
@@ -938,10 +974,10 @@ model Valuation {
 model Unit {
   id String @id @default(cuid())
 
-  parcelId   String?
-  areaEn     String?
-  zoneEn     String?
-  projectEn  String?
+  parcelId  String?
+  areaEn    String?
+  zoneEn    String?
+  projectEn String?
 
   propSubTypeEn String?
   actualArea    Decimal? @db.Decimal(16, 2)
@@ -970,9 +1006,9 @@ model Unit {
 // projects against the 815 the year-windowed project sync stores.
 
 model AreaLookup {
-  areaId String @id
-  nameEn String?
-  nameAr String?
+  areaId   String   @id
+  nameEn   String?
+  nameAr   String?
   syncedAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([nameEn])
@@ -980,19 +1016,19 @@ model AreaLookup {
 }
 
 model ProjectLookup {
-  projectId String @id
-  nameEn String?
-  nameAr String?
-  syncedAt DateTime @default(now()) @db.Timestamptz(3)
+  projectId String   @id
+  nameEn    String?
+  nameAr    String?
+  syncedAt  DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([nameEn])
   @@map("lookup_projects")
 }
 
 model EjariPropertyType {
-  typeId String @id
-  nameEn String?
-  nameAr String?
+  typeId   String   @id
+  nameEn   String?
+  nameAr   String?
   syncedAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@map("lookup_ejari_property_types")
@@ -1001,7 +1037,7 @@ model EjariPropertyType {
 /// One run of any open-data dataset sync. Replaces per-dataset run tables so
 /// the sync page has a single history to render.
 model OpenDataSyncRun {
-  id String @id @default(cuid())
+  id      String @id @default(cuid())
   /// transactions | rents | lands | buildings | units | brokers | developers |
   /// valuations | lookups
   dataset String
@@ -1018,17 +1054,17 @@ model OpenDataSyncRun {
   finishedAt DateTime? @db.Timestamptz(3)
   durationMs Int?
 
-  rowsSeen    Int @default(0)
-  rowsWritten Int @default(0)
-  rowsNew     Int @default(0)
-  rowsRemoved Int @default(0)
+  rowsSeen      Int @default(0)
+  rowsWritten   Int @default(0)
+  rowsNew       Int @default(0)
+  rowsRemoved   Int @default(0)
   /// What the gateway said the window contained, for reconciliation.
   reportedTotal Int @default(0)
 
-  requestCount Int @default(0)
-  retryCount   Int @default(0)
-  errorCount   Int @default(0)
-  bytesFetched BigInt @default(0)
+  requestCount Int     @default(0)
+  retryCount   Int     @default(0)
+  errorCount   Int     @default(0)
+  bytesFetched BigInt  @default(0)
   error        String?
   log          Json?
 
@@ -1058,7 +1094,7 @@ model Batch {
   code String @unique
 
   /// BROKERAGE | BROKER
-  kind String
+  kind   String
   /// Queued | In Progress | Completed | Delayed | Cancelled. Humans own this in
   /// Notion; the sync only forces Delayed/Completed when the facts demand it.
   status String @default("Queued")
@@ -1079,11 +1115,11 @@ model Batch {
   completedDate DateTime? @db.Timestamptz(3)
 
   /// Whole days past dueDate while still unfinished. 0 when on track.
-  daysOverdue Int @default(0)
+  daysOverdue      Int    @default(0)
   /// Delay inherited from the previous unfinished batch in the same lane. This
   /// is what surfaces "delayed on top of delayed" rather than showing each
   /// batch as independently a day late.
-  cascadeDelayDays Int @default(0)
+  cascadeDelayDays Int    @default(0)
   /// On Track | Due Today | Overdue | Critically Overdue | Done On Time | Done Late
   delayStatus      String @default("On Track")
 
@@ -1113,7 +1149,7 @@ model Batch {
 /// Daily / weekly / monthly goals. Targets are set by humans in Notion; actuals
 /// are counted here and pushed back, so attainment is never hand-maintained.
 model Target {
-  id String @id @default(cuid())
+  id        String @id @default(cuid())
   /// 2026-07-27 (daily) | 2026-W31 (weekly) | 2026-07 (monthly).
   periodKey String @unique
   /// DAILY | WEEKLY | MONTHLY
@@ -1132,7 +1168,7 @@ model Target {
   actualMeetings Int @default(0)
 
   /// On Track | At Risk | Behind | Hit | Missed | Upcoming
-  status String @default("Upcoming")
+  status String  @default("Upcoming")
   notes  String?
 
   notionPageId   String?   @unique
@@ -1179,4 +1215,106 @@ model NotionSyncRun {
   @@index([startedAt])
   @@index([status])
   @@map("notion_sync_runs")
+}
+
+/// A decision-maker found while researching a brokerage.
+///
+/// Separate rows rather than columns on Office because a firm routinely has a
+/// founder, a sales manager and a generic info@ address, they get found on
+/// different days by different people, and outreach is aimed at one of them
+/// specifically. Flattening them into `contactName` loses which person we
+/// actually messaged.
+model LeadContact {
+  id       String @id @default(cuid())
+  officeId String
+  office   Office @relation(fields: [officeId], references: [realEstateNumber], onDelete: Cascade)
+
+  name  String?
+  title String?
+
+  linkedinUrl String?
+  email       String?
+  phone       String?
+  whatsapp    String?
+
+  /// The one to lead with when several exist.
+  isPrimary  Boolean @default(false)
+  /// Where this came from — "company LinkedIn", "website team page", "Instagram bio".
+  source     String?
+  /// High | Medium | Low. Low means "probably them" and warns the next person.
+  confidence String  @default("Medium")
+
+  foundBy String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  outreach Outreach[]
+
+  @@index([officeId])
+  @@index([officeId, isPrimary])
+  @@map("lead_contacts")
+}
+
+/// One outreach attempt. Append a row per attempt; never overwrite an old one,
+/// because "messaged twice, no reply" and "messaged once" are different facts
+/// and the second is what a reply-rate is computed from.
+model Outreach {
+  id       String @id @default(cuid())
+  officeId String
+  office   Office @relation(fields: [officeId], references: [realEstateNumber], onDelete: Cascade)
+
+  contactId String?
+  contact   LeadContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  /// See OUTREACH_CHANNELS in lib/crm/research.ts.
+  channel String
+  /// See OUTREACH_OUTCOMES. Starts at "Sent" and is updated in place as the
+  /// prospect responds — the attempt is one event, its outcome evolves.
+  outcome String @default("Sent")
+
+  sentAt      DateTime  @default(now()) @db.Timestamptz(3)
+  respondedAt DateTime? @db.Timestamptz(3)
+  /// When to chase. Drives the follow-up worklist on the queue page.
+  followUpAt  DateTime? @db.Timestamptz(3)
+
+  message String?
+  notes   String?
+  actor   String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([officeId, sentAt])
+  @@index([sentAt])
+  @@index([outcome])
+  @@index([followUpAt])
+  @@index([actor, sentAt])
+  @@map("outreach")
+}
+
+/// Append-only audit of everything a human did to a lead.
+///
+/// Deliberately not derived from row state: state gets overwritten, and the
+/// question this answers is "what did the intern actually do today", which no
+/// amount of current-state inspection can reconstruct after the fact.
+model LeadActivity {
+  id       String @id @default(cuid())
+  officeId String
+  office   Office @relation(fields: [officeId], references: [realEstateNumber], onDelete: Cascade)
+
+  /// See ACTIVITY_TYPES in lib/crm/research.ts.
+  type    String
+  summary String
+  /// Structured before/after for the change, when there is one.
+  meta    Json?
+  actor   String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([officeId, createdAt])
+  @@index([createdAt])
+  @@index([actor, createdAt])
+  @@index([type, createdAt])
+  @@map("lead_activities")
 }

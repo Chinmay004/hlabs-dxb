@@ -20,6 +20,7 @@ Two systems in one repo:
 | `lib/dld/**`, the registry crawl or scoring | [README.md](./README.md) |
 | `lib/dld/transactions-*`, anything summing transaction value | **[README.md § Transactions: two traps](./README.md#transactions-two-traps-worth-knowing-before-you-query)** |
 | `lib/crm/**`, `lib/notion/**`, CRM tables | **[docs/CRM_PROTOCOL.md](./docs/CRM_PROTOCOL.md)** |
+| `app/crm/**`, research state, contacts, outreach | **[docs/CRM_PROTOCOL.md § 10](./docs/CRM_PROTOCOL.md#10-the-research-layer-crm)** |
 | Notion setup, tokens, database IDs | [docs/NOTION_INTEGRATION.md](./docs/NOTION_INTEGRATION.md) |
 
 ## Non-negotiables
@@ -34,6 +35,13 @@ Documented in full in the files above. The short version:
   sales team's work.
 - **One pipeline vocabulary.** `STAGES` in `lib/crm/config.ts` is used verbatim
   by Postgres, the dashboard and Notion. Do not add a translation layer.
+
+- **Research state is a separate axis from pipeline stage.** `researchStatus`
+  ("has anyone looked this firm up") and `status` ("where is the deal") are
+  orthogonal and neither derives from the other. Collapsing them is what made
+  "searched and found nothing" unrecordable, so the same dead firm kept coming
+  back to the next intern. Research fields live only in Postgres and must never
+  reach a Notion payload.
 - **All dates are UTC calendar days.** The registry publishes naive Dubai
   wall-clock stored against UTC. A bare `::date` cast on a `timestamptz`, or a
   local-timezone `getDate()`, will shift records into the wrong day.
