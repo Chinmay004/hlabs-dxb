@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db";
 import { runProjectSync } from "@/lib/dld/projects-sync";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 600;
+// 300s is the ceiling on Vercel's hobby plan.
+export const maxDuration = 300;
 
 export async function GET() {
   const runs = await prisma.projectSyncRun.findMany({

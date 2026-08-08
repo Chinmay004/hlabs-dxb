@@ -4,7 +4,9 @@ import { runSync } from "@/lib/dld/sync";
 
 export const dynamic = "force-dynamic";
 // A full crawl takes a couple of minutes; keep the handler alive for it.
-export const maxDuration = 800;
+// 300s is the ceiling on Vercel's hobby plan. If the reconcile stage pushes a
+// run past it, lower RECONCILE_MAX_OFFICES or raise RECONCILE_CONCURRENCY.
+export const maxDuration = 300;
 
 export async function GET() {
   const runs = await prisma.syncRun.findMany({
