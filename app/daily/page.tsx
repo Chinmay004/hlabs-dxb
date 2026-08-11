@@ -134,13 +134,13 @@ export default async function DailyPage({
         <BarChart
           rows={series}
           series={[
-            { key: "officesIssued", label: "Brokerages", color: "#4f8cff" },
+            { key: "officesIssued", label: "Brokerages", color: "var(--chart-1)" },
             {
               key: "brokerCardsIssued",
               label: "Broker cards (incl. renewals)",
-              color: "#3a4356",
+              color: "var(--chart-3)",
             },
-            { key: "brokersNew", label: "New brokers", color: "#35c98a" },
+            { key: "brokersNew", label: "New brokers", color: "var(--chart-2)" },
           ]}
           stacked={false}
           height={250}

@@ -2,6 +2,18 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { TIER_COLOR, fmtNumber, pctChange } from "@/lib/format";
 
+/**
+ * A translucent wash of `color`, for badge and pill backgrounds.
+ *
+ * Mixing toward `transparent` rather than baking an alpha hex is what lets the
+ * same call work in both themes: the tint is resolved against whatever surface
+ * it lands on, so a 12% success green reads as a pale mint on the light card
+ * and a dim glow on the dark one.
+ */
+function tint(color: string, pct = 12): string {
+  return `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+}
+
 export function Card({
   children,
   className = "",
@@ -77,7 +89,7 @@ export function Stat({
             className="rounded px-1 py-0.5 text-[10px] font-semibold tabular-nums"
             style={{
               color: delta >= 0 ? "var(--success)" : "var(--danger)",
-              background: delta >= 0 ? "#35c98a1a" : "#f2545b1a",
+              background: tint(delta >= 0 ? "var(--success)" : "var(--danger)"),
             }}
           >
             {delta >= 0 ? "+" : ""}
@@ -107,7 +119,7 @@ export function TierBadge({ tier }: { tier: string }) {
   return (
     <span
       className="inline-block rounded px-1.5 py-0.5 text-[10px] font-bold tabular-nums"
-      style={{ color, background: `${color}1f` }}
+      style={{ color, background: tint(color, 15) }}
     >
       {tier}
     </span>
@@ -124,13 +136,14 @@ export function Pill({
   title?: string;
 }) {
   const map = {
-    neutral: ["var(--muted)", "#8b96aa1a"],
-    good: ["var(--success)", "#35c98a1a"],
-    warn: ["var(--warn)", "#f0b4291a"],
-    bad: ["var(--danger)", "#f2545b1a"],
-    accent: ["var(--accent)", "#4f8cff1a"],
+    neutral: "var(--muted)",
+    good: "var(--success)",
+    warn: "var(--warn)",
+    bad: "var(--danger)",
+    accent: "var(--accent)",
   } as const;
-  const [color, background] = map[tone];
+  const color = map[tone];
+  const background = tint(color);
   return (
     <span
       title={title}

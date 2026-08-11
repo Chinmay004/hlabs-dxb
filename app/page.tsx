@@ -162,8 +162,12 @@ export default async function DashboardPage() {
         <BarChart
           rows={recent}
           series={[
-            { key: "officesIssued", label: "Brokerages licensed", color: "#4f8cff" },
-            { key: "brokersNew", label: "New brokers", color: "#35c98a" },
+            {
+              key: "officesIssued",
+              label: "Brokerages licensed",
+              color: "var(--chart-1)",
+            },
+            { key: "brokersNew", label: "New brokers", color: "var(--chart-2)" },
           ]}
           stacked={false}
           height={230}
@@ -277,11 +281,11 @@ export default async function DashboardPage() {
         <div className="grid gap-x-8 gap-y-1.5 md:grid-cols-2">
           <BarList
             rows={activities.slice(0, 8).map((a) => ({ label: a.name, value: a.n }))}
-            color="#7b6cf6"
+            color="var(--chart-4)"
           />
           <BarList
             rows={activities.slice(8, 16).map((a) => ({ label: a.name, value: a.n }))}
-            color="#7b6cf6"
+            color="var(--chart-4)"
           />
         </div>
       </Card>

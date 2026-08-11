@@ -56,12 +56,17 @@ export function pctChange(current: number, previous: number): number | null {
   return ((current - previous) / previous) * 100;
 }
 
+/**
+ * Tier colours as CSS variables rather than hex, so a badge rendered on the
+ * server picks up whichever theme the browser resolves. The literals live in
+ * `app/globals.css`, once per theme.
+ */
 export const TIER_COLOR: Record<string, string> = {
-  "A+": "#35c98a",
-  A: "#7bd88f",
-  B: "#f0b429",
-  C: "#e08b4a",
-  D: "#6b7688",
+  "A+": "var(--tier-a-plus)",
+  A: "var(--tier-a)",
+  B: "var(--tier-b)",
+  C: "var(--tier-c)",
+  D: "var(--tier-d)",
 };
 
 /**

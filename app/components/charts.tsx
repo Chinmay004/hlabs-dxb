@@ -116,7 +116,7 @@ export function BarChart({
                 y={PAD.top}
                 width={bandW}
                 height={plotH}
-                fill={hover === i ? "#ffffff08" : "transparent"}
+                fill={hover === i ? "var(--hover)" : "transparent"}
                 onMouseEnter={() => setHover(i)}
               />
               {series.map((s) => {

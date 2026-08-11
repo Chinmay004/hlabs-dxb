@@ -1,8 +1,96 @@
 @import "tailwindcss";
 
-/* Dense analyst-tool palette. Single dark theme — this is an internal dashboard
-   that gets stared at all day, so contrast is tuned for long tables. */
+/* Dense analyst-tool palette, in two themes.
+ *
+ * Contrast is tuned for long tables in both: the light theme is a cool near-
+ * white rather than pure #fff so a full-bleed table doesn't glare, and the dark
+ * theme is the original single-theme palette, unchanged.
+ *
+ * Every token below is defined three times, and must stay that way:
+ *   1. bare `:root`                        — light, the default
+ *   2. `prefers-color-scheme: dark`        — system preference, unless the user
+ *      guarded by `:not([data-theme=light])`  has explicitly chosen light
+ *   3. `:root[data-theme="dark"]`          — explicit choice, wins over system
+ *
+ * A token defined only inside a media query has no value when the toggle forces
+ * the other direction, so never add one to a single block. `ThemeToggle` sets
+ * `data-theme`; `layout.tsx` replays the stored choice before first paint.
+ */
 :root {
+  color-scheme: light;
+
+  /* The semantic four are darker than a designer would pick for plain text on
+     white, because their main job is 10px badge text sitting on a 12–15% tint
+     of themselves (see `tint()` in components/ui.tsx). Against that washed-out
+     ground, the obvious mid-tones land around 3.3–4.4:1. These clear 4.5:1 on
+     the tint, which leaves them comfortably above it as body text. Re-check
+     with a contrast tool before brightening any of them. */
+  --background: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #eaeef4;
+  --border: #ccd4e0;
+  --foreground: #0f1620;
+  --muted: #5a6474;
+  --accent: #1462dc;
+  --success: #0a784f;
+  --warn: #906000;
+  --danger: #c23139;
+
+  /* Text that sits on an --accent / tier fill. */
+  --on-accent: #ffffff;
+  /* Row and chart-band hover wash. Tinted toward the ink, not the ground. */
+  --hover: rgba(15, 22, 32, 0.05);
+
+  /* Chart series. Kept distinct from the semantic tokens above: a bar's colour
+     encodes which series it is, not whether something is good or broken. */
+  --chart-1: #1462dc;
+  --chart-2: #0a784f;
+  --chart-3: #7e8a9c;
+  --chart-4: #6d5ae0;
+
+  /* Lead tiers. A+ → D, strongest to weakest. Same 15%-tint constraint as
+     above — `TierBadge` always draws them on a wash of themselves. */
+  --tier-a-plus: #0a754d;
+  --tier-a: #337435;
+  --tier-b: #8c5d00;
+  --tier-c: #a54c19;
+  --tier-d: #5d6876;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --background: #0a0c10;
+    --surface: #11141b;
+    --surface-2: #171b24;
+    --border: #232936;
+    --foreground: #e7ecf3;
+    --muted: #8b96aa;
+    --accent: #4f8cff;
+    --success: #35c98a;
+    --warn: #f0b429;
+    --danger: #f2545b;
+
+    --on-accent: #ffffff;
+    --hover: rgba(255, 255, 255, 0.04);
+
+    --chart-1: #4f8cff;
+    --chart-2: #35c98a;
+    --chart-3: #3a4356;
+    --chart-4: #7b6cf6;
+
+    --tier-a-plus: #35c98a;
+    --tier-a: #7bd88f;
+    --tier-b: #f0b429;
+    --tier-c: #e08b4a;
+    --tier-d: #6b7688;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
   --background: #0a0c10;
   --surface: #11141b;
   --surface-2: #171b24;
@@ -13,6 +101,20 @@
   --success: #35c98a;
   --warn: #f0b429;
   --danger: #f2545b;
+
+  --on-accent: #ffffff;
+  --hover: rgba(255, 255, 255, 0.04);
+
+  --chart-1: #4f8cff;
+  --chart-2: #35c98a;
+  --chart-3: #3a4356;
+  --chart-4: #7b6cf6;
+
+  --tier-a-plus: #35c98a;
+  --tier-a: #7bd88f;
+  --tier-b: #f0b429;
+  --tier-c: #e08b4a;
+  --tier-d: #6b7688;
 }
 
 @theme inline {
@@ -26,6 +128,8 @@
   --color-success: var(--success);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
+  --color-on-accent: var(--on-accent);
+  --color-hover: var(--hover);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -54,15 +158,25 @@ body {
   background: transparent;
 }
 
+/* Native controls follow the root `color-scheme` set per theme above; the
+   advisory tools re-pin their own in tools.css. */
 input,
 select,
 textarea {
-  color-scheme: dark;
+  color-scheme: inherit;
 }
 
-/* Keep the browser's native date picker icon visible on a dark field. */
-input[type="date"]::-webkit-calendar-picker-indicator {
+/* The browser's native date-picker icon ships dark, so it disappears on a dark
+   field. Only invert it there — inverting in light mode makes it vanish. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.7);
+  }
+}
+:root[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
 }
 
